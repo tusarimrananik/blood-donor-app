@@ -1,282 +1,331 @@
-// app/donor/[id].tsx
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo } from "react";
-import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+    Alert,
+    Linking,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
-// 🔸 Keep this mock list in-sync with app/(tabs)/index.tsx for now.
-// Later: you will fetch this from backend by id.
-const MOCK_DONORS = [
-    {
-        id: "1",
-        name: "Rahim",
-        phone: "01711111111",
-        bloodGroup: "A+",
-        area: "Dhanmondi",
-        lat: 23.7465,
-        lon: 90.376,
-        availableNow: true,
-        lastDonated: "2025-08-01",
-        eligible: true,
-    },
-    {
-        id: "2",
-        name: "Karim",
-        phone: "01822222222",
-        bloodGroup: "O+",
-        area: "Mohammadpur",
-        lat: 23.7644,
-        lon: 90.3586,
-        availableNow: false,
-        lastDonated: "2025-11-20",
-        eligible: false,
-    },
-    {
-        id: "3",
-        name: "Sadia",
-        phone: "01933333333",
-        bloodGroup: "B-",
-        area: "Mirpur",
-        lat: 23.8069,
-        lon: 90.3687,
-        availableNow: true,
-        lastDonated: "",
-        eligible: true,
-    },
-];
+const API_BASE = "http://localhost:4000";
+
+type ApiDonor = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  bloodGroup: string;
+  area: string;
+  lastDonated: string; // ISO
+  lat: number;
+  lon: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function normalizeLastDonated(input: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+  const dt = new Date(input);
+  if (Number.isNaN(dt.getTime())) return input;
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function daysBetween(d1: Date, d2: Date) {
+  const ms = d2.getTime() - d1.getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
+function safeParseDateYYYYMMDD(s: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
 
 export default function DonorDetailsScreen() {
-    const router = useRouter();
-    const { id, distance, lat, lon, eligible, daysLeft, nextEligibleDate } =
-        useLocalSearchParams<{
-            id?: string;
-            distance?: string;
-            lat?: string;
-            lon?: string;
-            eligible?: string;
-            daysLeft?: string;
-            nextEligibleDate?: string;
-        }>();
+  const router = useRouter();
 
-    const distanceText =
-        distance && distance.length > 0 && !Number.isNaN(Number(distance))
-            ? `${Number(distance).toFixed(2)} km`
-            : "Unknown";
-    const eligibleBool = eligible === "true";
-    const eligibilityText = eligibleBool
-        ? "✅ Eligible"
-        : `⏳ Eligible in ${Number(daysLeft || "0")} days (${nextEligibleDate || "Unknown"})`;
-    const donor = useMemo(() => {
-        if (!id) return null;
-        return MOCK_DONORS.find((d) => d.id === String(id)) ?? null;
-    }, [id]);
+  const params = useLocalSearchParams<{
+    id?: string;
+    distance?: string;
+    eligible?: string;
+    daysLeft?: string;
+    nextEligibleDate?: string;
+  }>();
 
-    const handleRequest = () => {
-        if (!donor) return;
-        Alert.alert(
-            "Request Sent (Demo)",
-            `Request sent to ${donor.name} (${donor.bloodGroup}).\n\nLater we’ll save this in backend.`
-        );
-    };
+  const idStr = useMemo(() => {
+    const v: any = params.id;
+    if (!v) return "";
+    return Array.isArray(v) ? String(v[0] ?? "") : String(v);
+  }, [params.id]);
 
-    const handleDirections = async () => {
-        if (!lat || !lon) {
-            Alert.alert("No location", "This donor has no coordinates (demo).");
-            return;
+  const distanceText = useMemo(() => {
+    const v: any = params.distance;
+    const s = Array.isArray(v) ? String(v[0] ?? "") : String(v ?? "");
+    if (!s) return "Unknown";
+    const n = Number(s);
+    return Number.isFinite(n) ? `${n.toFixed(2)} km` : "Unknown";
+  }, [params.distance]);
+
+  const [donor, setDonor] = useState<ApiDonor | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errMsg, setErrMsg] = useState("");
+
+  useEffect(() => {
+    if (!idStr) return;
+
+    let alive = true;
+
+    (async () => {
+      setLoading(true);
+      setErrMsg("");
+
+      try {
+        const res = await fetch(`${API_BASE}/donors/${encodeURIComponent(idStr)}`);
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          throw new Error((json && (json.message || json.error)) || `HTTP ${res.status}`);
         }
+        if (!json?.ok || !json?.donor) throw new Error("Invalid response");
 
-        const destination = `${lat},${lon}`;
-
-        // Works well on web + phones:
-        const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
-
-        const canOpen = await Linking.canOpenURL(url);
-        if (!canOpen) {
-            Alert.alert("Cannot open Maps", "Could not open Google Maps.");
-            return;
+        if (alive) setDonor(json.donor as ApiDonor);
+      } catch (e: any) {
+        if (alive) {
+          setDonor(null);
+          setErrMsg(e?.message || "Failed to load donor");
         }
-        Linking.openURL(url);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
     };
+  }, [idStr]);
 
-    const handleCall = async () => {
-        if (!donor) return;
-        const url = `tel:${donor.phone}`;
+  const eligibility = useMemo(() => {
+    if (!donor) {
+      const eligibleBool = params.eligible === "true";
+      const dl = Number(params.daysLeft || "0");
+      const nd = params.nextEligibleDate || "Unknown";
+      return eligibleBool
+        ? { text: "✅ Eligible", eligible: true }
+        : { text: `⏳ Eligible in ${dl} days (${nd})`, eligible: false };
+    }
 
-        const canOpen = await Linking.canOpenURL(url);
-        if (!canOpen) {
-            Alert.alert("Cannot call", "Your device cannot place calls from here.");
-            return;
-        }
-        Linking.openURL(url);
-    };
+    const lastStr = normalizeLastDonated(donor.lastDonated);
+    const last = safeParseDateYYYYMMDD(lastStr);
+    if (!last) return { text: "⏳ Not eligible (invalid last donation date)", eligible: false };
 
-    return (
-        <>
-            <Stack.Screen
-                options={{
-                    title: "Donor Details",
-                    headerBackTitle: "Back",
-                }}
-            />
+    const today = new Date();
+    const passed = daysBetween(last, today);
+    const eligible = passed >= 90;
 
-            <ScrollView contentContainerStyle={styles.container}>
-                {!donor ? (
-                    <View style={styles.card}>
-                        <Text style={styles.title}>Donor not found</Text>
-                        <Text style={styles.text}>No donor exists for id: {String(id ?? "")}</Text>
+    if (eligible) return { text: "✅ Eligible", eligible: true };
 
-                        <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.back()}>
-                            <Text style={styles.secondaryBtnText}>Go Back</Text>
-                        </TouchableOpacity>
-                    </View>
-                ) : (
-                    <>
-                        <View style={styles.card}>
-                            <Text style={styles.name}>{donor.name}</Text>
+    const daysLeft = 90 - passed;
+    const next = new Date(last.getTime());
+    next.setDate(next.getDate() + 90);
+    const yyyy = next.getFullYear();
+    const mm = String(next.getMonth() + 1).padStart(2, "0");
+    const dd = String(next.getDate()).padStart(2, "0");
+    const nextEligibleDate = `${yyyy}-${mm}-${dd}`;
 
-                            <View style={styles.badgeRow}>
-                                <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>🩸 {donor.bloodGroup}</Text>
-                                </View>
-                                <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>📍 {donor.area}</Text>
-                                </View>
-                                <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>📏 {distanceText}</Text>
-                                </View>
-                            </View>
+    return { text: `⏳ Eligible in ${daysLeft} days (${nextEligibleDate})`, eligible: false };
+  }, [donor, params.eligible, params.daysLeft, params.nextEligibleDate]);
 
-                            <View style={styles.divider} />
+  const lastDonationText = useMemo(() => {
+    if (!donor) return "—";
+    return donor.lastDonated ? normalizeLastDonated(donor.lastDonated) : "Not provided";
+  }, [donor]);
 
-                            <InfoRow label="Available now" value={donor.availableNow ? "Yes" : "No"} />
-                            <InfoRow label="Eligible" value={eligibilityText } />
-                            <InfoRow label="Last donation" value={donor.lastDonated ? donor.lastDonated : "Not provided"} />
-                            <InfoRow label="Phone" value={donor.phone} />
-                        </View>
+  const openUrlOrAlert = async (url: string, failTitle: string, failMsg: string) => {
+    const canOpen = await Linking.canOpenURL(url);
+    if (!canOpen) {
+      Alert.alert(failTitle, failMsg);
+      return;
+    }
+    Linking.openURL(url);
+  };
 
-                        <View style={styles.actions}>
-                            <TouchableOpacity style={styles.primaryBtn} onPress={handleRequest}>
-                                <Text style={styles.primaryBtnText}>Request (Demo)</Text>
-                            </TouchableOpacity>
+  const handleDirections = async () => {
+    if (!donor) return;
+    const destination = `${donor.lat},${donor.lon}`;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
+    await openUrlOrAlert(url, "Cannot open Maps", "Could not open Google Maps.");
+  };
 
-                            <TouchableOpacity style={styles.callBtn} onPress={handleCall}>
-                                <Text style={styles.callBtnText}>Call (Demo)</Text>
-                            </TouchableOpacity>
+  const handleCall = async () => {
+    if (!donor) return;
+    await openUrlOrAlert(`tel:${donor.phone}`, "Cannot call", "Your device/browser cannot place calls here.");
+  };
 
-                            <TouchableOpacity style={styles.secondaryBtn} onPress={handleDirections}>
-                                <Text style={styles.secondaryBtnText}>Directions (Google Maps)</Text>
-                            </TouchableOpacity>
+  const handleSms = async () => {
+    if (!donor) return;
+    await openUrlOrAlert(`sms:${donor.phone}`, "Cannot SMS", "Your device/browser cannot send SMS here.");
+  };
 
-                            <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.back()}>
-                                <Text style={styles.secondaryBtnText}>Back</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </>
-                )}
-            </ScrollView>
-        </>
+  const handleEmail = async () => {
+    if (!donor) return;
+    await openUrlOrAlert(`mailto:${donor.email}`, "Cannot email", "Your device/browser cannot open email here.");
+  };
+
+  const handleCopyPhone = async () => {
+    if (!donor) return;
+
+    if (Platform.OS === "web") {
+      const navAny: any = globalThis as any;
+      const clip = navAny?.navigator?.clipboard;
+      if (clip?.writeText) {
+        await clip.writeText(donor.phone);
+        Alert.alert("Copied ✅", "Phone number copied to clipboard.");
+        return;
+      }
+    }
+
+    Alert.alert("Copy phone", donor.phone);
+  };
+
+  const handleRequest = () => {
+    if (!donor) return;
+    Alert.alert(
+      "Request Sent (Demo)",
+      `Request sent to ${donor.name} (${donor.bloodGroup}).\n\nNext step later: store requests in backend.`
     );
+  };
+
+  return (
+    <>
+      <Stack.Screen options={{ title: "Donor Details", headerBackTitle: "Back" }} />
+
+      <ScrollView contentContainerStyle={styles.container}>
+        {loading ? (
+          <View style={styles.card}>
+            <Text style={styles.title}>Loading…</Text>
+            <Text style={styles.text}>Fetching donor details from backend.</Text>
+          </View>
+        ) : errMsg ? (
+          <View style={styles.card}>
+            <Text style={styles.title}>Failed to load donor</Text>
+            <Text style={styles.text}>{errMsg}</Text>
+
+            <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.back()}>
+              <Text style={styles.secondaryBtnText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        ) : !donor ? (
+          <View style={styles.card}>
+            <Text style={styles.title}>Donor not found</Text>
+            <Text style={styles.text}>No donor exists for id: {idStr}</Text>
+
+            <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.back()}>
+              <Text style={styles.secondaryBtnText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <View style={styles.card}>
+              <Text style={styles.name}>{donor.name}</Text>
+
+              <View style={styles.badgeRow}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>🩸 {donor.bloodGroup}</Text>
+                </View>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>📍 {donor.area}</Text>
+                </View>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>📏 {distanceText}</Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              <InfoRow label="Eligible" value={eligibility.text} />
+              <InfoRow label="Last donation" value={lastDonationText} />
+              <InfoRow label="Phone" value={donor.phone} />
+              <InfoRow label="Email" value={donor.email} />
+            </View>
+
+            <View style={styles.actions}>
+              <TouchableOpacity style={styles.primaryBtn} onPress={handleRequest}>
+                <Text style={styles.primaryBtnText}>Request (Demo)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.callBtn} onPress={handleCall}>
+                <Text style={styles.callBtnText}>Call</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.secondaryBtn} onPress={handleSms}>
+                <Text style={styles.secondaryBtnText}>SMS</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.secondaryBtn} onPress={handleEmail}>
+                <Text style={styles.secondaryBtnText}>Email</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.secondaryBtn} onPress={handleCopyPhone}>
+                <Text style={styles.secondaryBtnText}>Copy Phone</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.secondaryBtn} onPress={handleDirections}>
+                <Text style={styles.secondaryBtnText}>Directions (Google Maps)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.back()}>
+                <Text style={styles.secondaryBtnText}>Back</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </>
+  );
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
-    return (
-        <View style={styles.row}>
-            <Text style={styles.rowLabel}>{label}</Text>
-            <Text style={styles.rowValue}>{value}</Text>
-        </View>
-    );
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue}>{value}</Text>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        padding: 16,
-        gap: 12,
-    },
-    card: {
-        backgroundColor: "#fff",
-        borderRadius: 14,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: "#eee",
-    },
-    name: {
-        fontSize: 22,
-        fontWeight: "700",
-        marginBottom: 10,
-    },
-    title: {
-        fontSize: 18,
-        fontWeight: "700",
-        marginBottom: 6,
-    },
-    text: {
-        fontSize: 14,
-        opacity: 0.8,
-        marginBottom: 12,
-    },
-    badgeRow: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: 8,
-    },
-    badge: {
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-        borderRadius: 999,
-        backgroundColor: "#f5f5f5",
-    },
-    badgeText: {
-        fontSize: 13,
-        fontWeight: "600",
-    },
-    divider: {
-        height: 1,
-        backgroundColor: "#eee",
-        marginVertical: 14,
-    },
-    row: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        paddingVertical: 6,
-    },
-    rowLabel: {
-        fontSize: 14,
-        opacity: 0.7,
-    },
-    rowValue: {
-        fontSize: 14,
-        fontWeight: "600",
-    },
-    actions: {
-        gap: 10,
-    },
-    primaryBtn: {
-        paddingVertical: 14,
-        borderRadius: 12,
-        alignItems: "center",
-        backgroundColor: "#111827",
-    },
-    primaryBtnText: {
-        color: "#fff",
-        fontWeight: "700",
-    },
-    callBtn: {
-        paddingVertical: 14,
-        borderRadius: 12,
-        alignItems: "center",
-        backgroundColor: "#16a34a",
-    },
-    callBtnText: {
-        color: "#fff",
-        fontWeight: "700",
-    },
-    secondaryBtn: {
-        paddingVertical: 14,
-        borderRadius: 12,
-        alignItems: "center",
-        backgroundColor: "#f3f4f6",
-    },
-    secondaryBtnText: {
-        color: "#111827",
-        fontWeight: "700",
-    },
+  container: { padding: 16, gap: 12 },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
+  name: { fontSize: 22, fontWeight: "700", marginBottom: 10 },
+  title: { fontSize: 18, fontWeight: "700", marginBottom: 6 },
+  text: { fontSize: 14, opacity: 0.8, marginBottom: 12 },
+  badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  badge: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: "#f5f5f5" },
+  badgeText: { fontSize: 13, fontWeight: "600" },
+  divider: { height: 1, backgroundColor: "#eee", marginVertical: 14 },
+  row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, gap: 10 },
+  rowLabel: { fontSize: 14, opacity: 0.7 },
+  rowValue: { fontSize: 14, fontWeight: "600", flexShrink: 1, textAlign: "right" },
+  actions: { gap: 10 },
+  primaryBtn: { paddingVertical: 14, borderRadius: 12, alignItems: "center", backgroundColor: "#111827" },
+  primaryBtnText: { color: "#fff", fontWeight: "700" },
+  callBtn: { paddingVertical: 14, borderRadius: 12, alignItems: "center", backgroundColor: "#16a34a" },
+  callBtnText: { color: "#fff", fontWeight: "700" },
+  secondaryBtn: { paddingVertical: 14, borderRadius: 12, alignItems: "center", backgroundColor: "#f3f4f6" },
+  secondaryBtnText: { color: "#111827", fontWeight: "700" },
 });

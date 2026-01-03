@@ -1,7 +1,6 @@
-// app/(tabs)/index.tsx
 import * as Location from "expo-location";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Platform,
@@ -12,7 +11,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { loadDonors } from "../lib/donorsStore";
 
 type Donor = {
   id: string;
@@ -22,36 +20,14 @@ type Donor = {
   area: string;
   lat: number;
   lon: number;
-  availableNow: boolean;
-  lastDonated: string; // YYYY-MM-DD
+  availableNow?: boolean;
+  lastDonated: string; // normalized to YYYY-MM-DD
 };
 
 const BLOOD_GROUPS = ["All", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
 
-const MOCK_DONORS: Donor[] = [
-  {
-    id: "1",
-    name: "Rahim",
-    phone: "01711111111",
-    bloodGroup: "A+",
-    area: "Mirpur",
-    lat: 23.8041,
-    lon: 90.3667,
-    availableNow: true,
-    lastDonated: "2025-08-01",
-  },
-  {
-    id: "2",
-    name: "Karim",
-    phone: "01722222222",
-    bloodGroup: "O+",
-    area: "Dhanmondi",
-    lat: 23.7461,
-    lon: 90.3742,
-    availableNow: true,
-    lastDonated: "2025-12-01",
-  },
-];
+// Expo Web (Windows Chrome)
+const API_BASE = "http://localhost:4000";
 
 function toRad(n: number) {
   return (n * Math.PI) / 180;
@@ -74,14 +50,44 @@ function daysBetween(d1: Date, d2: Date) {
 }
 
 function safeParseDateYYYYMMDD(s: string) {
-  // expects YYYY-MM-DD
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
   const [y, m, d] = s.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
-  // validate round-trip
   if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
   return dt;
 }
+
+function normalizeLastDonated(input: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+
+  const dt = new Date(input);
+  if (Number.isNaN(dt.getTime())) return input;
+
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+type ApiGetDonorsResponse = {
+  ok: boolean;
+  total: number;
+  items: Array<{
+    id: string;
+    name: string;
+    phone: string;
+    email?: string;
+    bloodGroup: string;
+    area: string;
+    lastDonated: string; // ISO string from backend
+    lat: number;
+    lon: number;
+  }>;
+  limit?: number;
+  offset?: number;
+  bloodGroup?: string;
+  eligibleOnly?: boolean;
+};
 
 export default function FindDonorsScreen() {
   const router = useRouter();
@@ -90,67 +96,122 @@ export default function FindDonorsScreen() {
   const [myLat, setMyLat] = useState<number | null>(null);
   const [myLon, setMyLon] = useState<number | null>(null);
 
-  const [storedDonors, setStoredDonors] = useState<Donor[]>([]);
+  const [apiDonors, setApiDonors] = useState<Donor[]>([]);
+  const [apiTotal, setApiTotal] = useState<number>(0);
 
   const [selectedGroup, setSelectedGroup] = useState<(typeof BLOOD_GROUPS)[number]>("All");
   const [maxDistanceKmText, setMaxDistanceKmText] = useState<string>("5");
-  const [eligibleOnly, setEligibleOnly] = useState<boolean>(false);
 
-  async function requestMyLocation() {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setPermissionStatus("denied");
-        return;
-      }
-      setPermissionStatus("granted");
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      setMyLat(pos.coords.latitude);
-      setMyLon(pos.coords.longitude);
-    } catch {
-      Alert.alert("Location error", "Could not get your GPS location.");
-    }
-  }
+  // ✅ Toggle wired to backend now
+  const [eligibleOnly, setEligibleOnly] = useState<boolean>(true);
 
-  const reloadStoredDonors = useCallback(async () => {
-    const d = await loadDonors();
-    // Ensure array + basic shape
-    setStoredDonors(Array.isArray(d) ? (d as Donor[]) : []);
-  }, []);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [apiError, setApiError] = useState<string>("");
 
-  // When screen is focused (coming back from Become Donor), reload donors
-  useFocusEffect(
-    useCallback(() => {
-      reloadStoredDonors();
-      // Also request location on focus if not already granted
-      if (permissionStatus === "idle") requestMyLocation();
-    }, [reloadStoredDonors, permissionStatus])
-  );
-
-  const allDonors: Donor[] = useMemo(() => {
-    // Merge stored + mock
-    // If IDs collide, stored wins (rare)
-    const map = new Map<string, Donor>();
-    for (const d of MOCK_DONORS) map.set(d.id, d);
-    for (const d of storedDonors) map.set(d.id, d);
-    return Array.from(map.values());
-  }, [storedDonors]);
+  // To avoid stale responses overwriting newer ones
+  const fetchSeqRef = useRef(0);
 
   const maxDistanceKm = useMemo(() => {
     const n = Number(maxDistanceKmText);
     return Number.isFinite(n) && n > 0 ? n : 5;
   }, [maxDistanceKmText]);
 
-  const computedList = useMemo(() => {
-    if (myLat == null || myLon == null) return [];
+  const fetchDonorsFromApi = useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
 
+    setIsLoading(true);
+    setApiError("");
+
+    try {
+      const params = new URLSearchParams();
+
+      // ✅ ONLY server filter: bloodGroup
+      // (Distance filtering is client-side using GPS if available)
+      if (selectedGroup !== "All") params.set("bloodGroup", selectedGroup); // AB+ auto-encodes to AB%2B
+
+      // ✅ Eligible toggle controls backend mode
+      params.set("eligibleOnly", eligibleOnly ? "1" : "0");
+
+      params.set("limit", "50");
+      params.set("offset", "0");
+
+      const url = `${API_BASE}/donors?${params.toString()}`;
+
+      const res = await fetch(url);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status} ${text}`);
+      }
+
+      const data = (await res.json()) as ApiGetDonorsResponse;
+      if (!data.ok) throw new Error("API returned ok=false");
+
+      const mapped: Donor[] = data.items.map((d) => ({
+        id: d.id,
+        name: d.name,
+        phone: d.phone,
+        bloodGroup: d.bloodGroup,
+        area: d.area,
+        lat: d.lat,
+        lon: d.lon,
+        availableNow: true,
+        lastDonated: normalizeLastDonated(d.lastDonated),
+      }));
+
+      if (seq === fetchSeqRef.current) {
+        setApiDonors(mapped);
+        setApiTotal(data.total ?? mapped.length);
+      }
+    } catch (e: any) {
+      if (seq === fetchSeqRef.current) {
+        setApiError(e?.message || "Failed to load donors");
+        setApiDonors([]);
+        setApiTotal(0);
+      }
+    } finally {
+      if (seq === fetchSeqRef.current) setIsLoading(false);
+    }
+  }, [selectedGroup, eligibleOnly]);
+
+  const requestMyLocation = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setPermissionStatus("denied");
+        return;
+      }
+
+      setPermissionStatus("granted");
+
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      setMyLat(pos.coords.latitude);
+      setMyLon(pos.coords.longitude);
+
+      // ✅ IMPORTANT: DO NOT refetch donors here.
+      // GPS is only used for client-side distance filtering.
+    } catch {
+      Alert.alert("Location error", "Could not get your GPS location.");
+    }
+  }, []);
+
+  // Fetch donors on focus
+  useFocusEffect(
+    useCallback(() => {
+      if (permissionStatus === "idle") requestMyLocation();
+      fetchDonorsFromApi();
+    }, [permissionStatus, requestMyLocation, fetchDonorsFromApi])
+  );
+
+  const computedList = useMemo(() => {
     const today = new Date();
 
-    return allDonors
+    return apiDonors
       .map((d) => {
-        const distance = haversineKm(myLat, myLon, d.lat, d.lon);
+        const distance =
+          myLat != null && myLon != null ? haversineKm(myLat, myLon, d.lat, d.lon) : null;
 
         const last = safeParseDateYYYYMMDD(d.lastDonated);
         let eligible = true;
@@ -169,7 +230,6 @@ export default function FindDonorsScreen() {
           const dd = String(next.getDate()).padStart(2, "0");
           nextEligibleDate = `${yyyy}-${mm}-${dd}`;
         } else {
-          // If date invalid, treat as not eligible (safer for demo)
           eligible = false;
           daysLeft = 0;
           nextEligibleDate = "";
@@ -181,13 +241,20 @@ export default function FindDonorsScreen() {
         const { donor, distance, eligible } = x;
 
         if (selectedGroup !== "All" && donor.bloodGroup !== selectedGroup) return false;
-        if (distance > maxDistanceKm) return false;
+
+        // ✅ Apply distance filter ONLY if we have GPS
+        if (distance != null && distance > maxDistanceKm) return false;
+
+        // ✅ Toggle filters client-side too (backend already respects it)
         if (eligibleOnly && !eligible) return false;
 
         return true;
       })
-      .sort((a, b) => a.distance - b.distance);
-  }, [allDonors, myLat, myLon, selectedGroup, maxDistanceKm, eligibleOnly]);
+      .sort((a, b) => {
+        if (a.distance != null && b.distance != null) return a.distance - b.distance;
+        return a.donor.name.localeCompare(b.donor.name);
+      });
+  }, [apiDonors, myLat, myLon, selectedGroup, maxDistanceKm, eligibleOnly]);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -206,7 +273,7 @@ export default function FindDonorsScreen() {
         <Text style={styles.muted}>
           {myLat != null && myLon != null
             ? `Lat: ${myLat.toFixed(6)} | Lon: ${myLon.toFixed(6)}`
-            : "Location not available yet."}
+            : "GPS not available (still showing donors)."}
         </Text>
       </View>
 
@@ -230,6 +297,8 @@ export default function FindDonorsScreen() {
         </View>
 
         <Text style={styles.label}>Max Distance (km)</Text>
+        <Text style={styles.muted}>(Distance filter works only after GPS is available)</Text>
+
         <View style={styles.row}>
           <TextInput
             value={maxDistanceKmText}
@@ -255,17 +324,22 @@ export default function FindDonorsScreen() {
           </Text>
         </TouchableOpacity>
 
+        <TouchableOpacity style={styles.quickBtn} onPress={fetchDonorsFromApi}>
+          <Text style={styles.quickBtnText}>{isLoading ? "Loading..." : "Refresh from API"}</Text>
+        </TouchableOpacity>
+
         <Text style={styles.muted}>
-          Stored donors: {storedDonors.length} | Total donors: {allDonors.length}
+          API donors loaded: {apiDonors.length} | API total: {apiTotal} | Mode:{" "}
+          {eligibleOnly ? "Eligible-only" : "All donors"}
         </Text>
+
+        {apiError ? <Text style={styles.errorText}>API error: {apiError}</Text> : null}
       </View>
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Results</Text>
 
-        {myLat == null || myLon == null ? (
-          <Text style={styles.muted}>Tap “Get My GPS” to see nearby donors.</Text>
-        ) : computedList.length === 0 ? (
+        {computedList.length === 0 ? (
           <Text style={styles.muted}>No donors match your filters.</Text>
         ) : (
           computedList.map(({ donor, distance, eligible, daysLeft, nextEligibleDate }) => {
@@ -274,6 +348,9 @@ export default function FindDonorsScreen() {
               : nextEligibleDate
               ? `⏳ Eligible in ${daysLeft} days (${nextEligibleDate})`
               : "⏳ Not eligible";
+
+            const distanceText =
+              distance == null ? "Distance: GPS off" : `${distance.toFixed(2)} km`;
 
             return (
               <TouchableOpacity
@@ -284,7 +361,7 @@ export default function FindDonorsScreen() {
                     pathname: "/donor/[id]" as const,
                     params: {
                       id: donor.id,
-                      distance: distance.toFixed(2),
+                      distance: distance == null ? "" : distance.toFixed(2),
                       lat: String(donor.lat),
                       lon: String(donor.lon),
                       eligible: String(eligible),
@@ -299,7 +376,7 @@ export default function FindDonorsScreen() {
                     {donor.name} • {donor.bloodGroup}
                   </Text>
                   <Text style={styles.muted}>
-                    {donor.area} • {distance.toFixed(2)} km
+                    {donor.area} • {distanceText}
                   </Text>
                   <Text style={styles.eligibility}>{eligibleText}</Text>
                 </View>
@@ -314,14 +391,8 @@ export default function FindDonorsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    gap: 12,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-  },
+  container: { padding: 16, gap: 12 },
+  title: { fontSize: 22, fontWeight: "700" },
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -330,34 +401,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#eee",
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-  },
+  sectionTitle: { fontSize: 16, fontWeight: "800" },
   primaryBtn: {
     backgroundColor: "#111",
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
   },
-  primaryBtnText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 16,
-  },
-  muted: {
-    color: "#666",
-  },
-  label: {
-    fontWeight: "700",
-    marginTop: 6,
-  },
-  chipsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 6,
-  },
+  primaryBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  muted: { color: "#666" },
+  errorText: { color: "#b00020", fontWeight: "800" },
+  label: { fontWeight: "700", marginTop: 6 },
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -366,22 +421,10 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     backgroundColor: "#fff",
   },
-  chipActive: {
-    borderColor: "#111",
-    backgroundColor: "#111",
-  },
-  chipText: {
-    color: "#111",
-    fontWeight: "600",
-  },
-  chipTextActive: {
-    color: "#fff",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  chipActive: { borderColor: "#111", backgroundColor: "#111" },
+  chipText: { color: "#111", fontWeight: "600" },
+  chipTextActive: { color: "#fff" },
+  row: { flexDirection: "row", alignItems: "center", gap: 8 },
   input: {
     borderWidth: 1,
     borderColor: "#ddd",
@@ -397,10 +440,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ddd",
     backgroundColor: "#fff",
+    alignItems: "center",
   },
-  quickBtnText: {
-    fontWeight: "800",
-  },
+  quickBtnText: { fontWeight: "800" },
   toggle: {
     marginTop: 6,
     borderWidth: 1,
@@ -410,17 +452,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
   },
-  toggleActive: {
-    backgroundColor: "#111",
-    borderColor: "#111",
-  },
-  toggleText: {
-    fontWeight: "800",
-    color: "#111",
-  },
-  toggleTextActive: {
-    color: "#fff",
-  },
+  toggleActive: { backgroundColor: "#111", borderColor: "#111" },
+  toggleText: { fontWeight: "800", color: "#111" },
+  toggleTextActive: { color: "#fff" },
   donorRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -429,17 +463,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#eee",
   },
-  donorName: {
-    fontWeight: "800",
-    fontSize: 16,
-  },
-  eligibility: {
-    marginTop: 4,
-    fontWeight: "700",
-  },
-  chev: {
-    fontSize: 26,
-    color: "#999",
-    paddingHorizontal: 6,
-  },
+  donorName: { fontWeight: "800", fontSize: 16 },
+  eligibility: { marginTop: 4, fontWeight: "700" },
+  chev: { fontSize: 26, color: "#999", paddingHorizontal: 6 },
 });

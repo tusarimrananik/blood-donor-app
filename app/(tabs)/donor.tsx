@@ -1,4 +1,3 @@
-// app/(tabs)/donor.tsx
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -12,27 +11,29 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { addDonor, loadDonors } from "../lib/donorsStore";
 
-type Donor = {
-  id: string;
+type DonorPayload = {
   name: string;
   phone: string;
+  email: string;
   bloodGroup: string;
   area: string;
+  lastDonated: string; // YYYY-MM-DD (backend expects this)
   lat: number;
   lon: number;
-  availableNow: boolean; // kept for compatibility; eligibility is computed in Find screen
-  lastDonated: string; // YYYY-MM-DD
 };
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
+
+// Expo Web (Windows Chrome)
+const API_BASE = "http://localhost:4000";
 
 export default function BecomeDonorScreen() {
   const router = useRouter();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [bloodGroup, setBloodGroup] = useState<(typeof BLOOD_GROUPS)[number] | "">("");
   const [area, setArea] = useState("");
   const [lastDonated, setLastDonated] = useState("");
@@ -43,15 +44,40 @@ export default function BecomeDonorScreen() {
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
 
+  const [submitting, setSubmitting] = useState(false);
+
+  function normalizePhone(p: string) {
+    return p.replace(/\s+/g, "").trim();
+  }
+
+  function normalizeEmail(e: string) {
+    return e.trim().toLowerCase();
+  }
+
+  function isValidEmail(e: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  }
+
+  const validation = useMemo(() => {
+    const nameOk = name.trim().length >= 2;
+    const phoneOk = normalizePhone(phone).length >= 8;
+    const emailOk = isValidEmail(normalizeEmail(email));
+    const bloodOk = bloodGroup !== "";
+    const areaOk = area.trim().length >= 2;
+    const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(lastDonated.trim());
+    return { nameOk, phoneOk, emailOk, bloodOk, areaOk, dateOk };
+  }, [name, phone, email, bloodGroup, area, lastDonated]);
+
   const canRegister = useMemo(() => {
     return (
-      name.trim().length >= 2 &&
-      phone.trim().length >= 8 &&
-      bloodGroup !== "" &&
-      area.trim().length >= 2 &&
-      /^\d{4}-\d{2}-\d{2}$/.test(lastDonated.trim())
+      validation.nameOk &&
+      validation.phoneOk &&
+      validation.emailOk &&
+      validation.bloodOk &&
+      validation.areaOk &&
+      validation.dateOk
     );
-  }, [name, phone, bloodGroup, area, lastDonated]);
+  }, [validation]);
 
   async function captureLocation() {
     try {
@@ -72,73 +98,99 @@ export default function BecomeDonorScreen() {
     }
   }
 
-  // Auto-capture by default (best for demo)
   useEffect(() => {
     captureLocation();
   }, []);
 
-  function normalizePhone(p: string) {
-    // simple normalization: remove spaces
-    return p.replace(/\s+/g, "").trim();
-  }
-
   async function onRegister() {
+    if (submitting) return;
+
     if (!canRegister) {
-      Alert.alert(
-        "Incomplete form",
-        "Please fill all fields correctly.\n\nLast donated must be in YYYY-MM-DD format."
-      );
+      const reasons: string[] = [];
+      if (!validation.nameOk) reasons.push("• Name must be at least 2 letters");
+      if (!validation.phoneOk) reasons.push("• Phone must be at least 8 digits");
+      if (!validation.emailOk) reasons.push("• Email must be valid");
+      if (!validation.bloodOk) reasons.push("• Select a blood group");
+      if (!validation.areaOk) reasons.push("• Area must be at least 2 letters");
+      if (!validation.dateOk) reasons.push("• Last donated must be YYYY-MM-DD");
+      Alert.alert("Incomplete form", reasons.join("\n") || "Please fill all fields correctly.");
       return;
     }
 
-    const phoneNorm = normalizePhone(phone);
+    setSubmitting(true);
 
-    // Prevent duplicate donor by phone (demo-friendly)
-    const existing = await loadDonors();
-    const already = existing.find((d: any) => normalizePhone(String(d.phone || "")) === phoneNorm);
-    if (already) {
-      Alert.alert(
-        "Already registered",
-        "This phone number is already registered as a donor.\n\nUse a different phone number."
-      );
-      return;
+    try {
+      const phoneNorm = normalizePhone(phone);
+      const emailNorm = normalizeEmail(email);
+
+      const payload: DonorPayload = {
+        name: name.trim(),
+        phone: phoneNorm,
+        email: emailNorm,
+        bloodGroup: bloodGroup as string,
+        area: area.trim(),
+        lastDonated: lastDonated.trim(), // ✅ send YYYY-MM-DD
+        lat: lat ?? 0,
+        lon: lon ?? 0,
+      };
+
+      const res = await fetch(`${API_BASE}/donors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const fieldErrors = json?.errors?.fieldErrors;
+        if (fieldErrors && typeof fieldErrors === "object") {
+          const lines: string[] = [];
+          for (const k of Object.keys(fieldErrors)) {
+            const arr = fieldErrors[k];
+            if (Array.isArray(arr)) lines.push(`• ${k}: ${arr.join(", ")}`);
+          }
+          if (lines.length) throw new Error(lines.join("\n"));
+        }
+
+        const msg = (json && (json.message || json.error)) || `Request failed (HTTP ${res.status})`;
+        const lower = String(msg).toLowerCase();
+        if (lower.includes("phone") && (lower.includes("unique") || lower.includes("duplicate"))) {
+          throw new Error("This phone number is already registered.");
+        }
+        if (lower.includes("email") && (lower.includes("unique") || lower.includes("duplicate"))) {
+          throw new Error("This email is already registered.");
+        }
+        throw new Error(msg);
+      }
+
+      Alert.alert("Success ✅", "You are registered as a donor!", [
+        { text: "OK", onPress: () => router.push("/" as const) },
+      ]);
+
+      setName("");
+      setPhone("");
+      setEmail("");
+      setBloodGroup("");
+      setArea("");
+      setLastDonated("");
+    } catch (e: any) {
+      Alert.alert("Registration failed", e?.message || "Something went wrong.");
+    } finally {
+      setSubmitting(false);
     }
-
-    const donor: Donor = {
-      id: String(Date.now()),
-      name: name.trim(),
-      phone: phoneNorm,
-      bloodGroup,
-      area: area.trim(),
-      lat: lat ?? 0,
-      lon: lon ?? 0,
-      availableNow: true,
-      lastDonated: lastDonated.trim(),
-    };
-
-    await addDonor(donor);
-
-    Alert.alert("Success ✅", "You are registered as a donor!", [
-      {
-        text: "OK",
-        onPress: () => router.push("/" as const), // back to Find Donors tab (index)
-      },
-    ]);
   }
+
+  const visuallyDisabled = !canRegister || submitting;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Become a Donor</Text>
-      <Text style={styles.subtitle}>Register locally (AsyncStorage) for demo.</Text>
+      <Text style={styles.subtitle}>Registers to backend (Neon + Prisma + PostGIS).</Text>
 
       <View style={styles.card}>
         <Text style={styles.label}>Full Name</Text>
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="e.g. Rahim Uddin"
-          style={styles.input}
-        />
+        <TextInput value={name} onChangeText={setName} placeholder="e.g. Rahim Uddin" style={styles.input} />
 
         <Text style={styles.label}>Phone Number</Text>
         <TextInput
@@ -146,6 +198,16 @@ export default function BecomeDonorScreen() {
           onChangeText={setPhone}
           placeholder="e.g. 017xxxxxxxx"
           keyboardType={Platform.OS === "ios" ? "number-pad" : "phone-pad"}
+          style={styles.input}
+        />
+
+        <Text style={styles.label}>Email</Text>
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          placeholder="e.g. rahim@gmail.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
           style={styles.input}
         />
 
@@ -165,19 +227,15 @@ export default function BecomeDonorScreen() {
           })}
         </View>
 
-        <Text style={styles.label}>Area (Text)</Text>
-        <TextInput
-          value={area}
-          onChangeText={setArea}
-          placeholder="e.g. Mirpur 10"
-          style={styles.input}
-        />
+        <Text style={styles.label}>Area</Text>
+        <TextInput value={area} onChangeText={setArea} placeholder="e.g. Mirpur 10" style={styles.input} />
 
         <Text style={styles.label}>Last Donated (YYYY-MM-DD)</Text>
         <TextInput
           value={lastDonated}
           onChangeText={setLastDonated}
-          placeholder="e.g. 2025-10-01"
+          placeholder="e.g. 2025-09-01"
+          maxLength={10}
           style={styles.input}
         />
 
@@ -203,15 +261,15 @@ export default function BecomeDonorScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.primaryBtn, !canRegister && styles.primaryBtnDisabled]}
+          style={[styles.primaryBtn, visuallyDisabled && styles.primaryBtnDisabled]}
           onPress={onRegister}
+          disabled={submitting}
         >
-          <Text style={styles.primaryBtnText}>Register Donor</Text>
+          <Text style={styles.primaryBtnText}>{submitting ? "Registering..." : "Register Donor"}</Text>
         </TouchableOpacity>
 
         <Text style={styles.note}>
-          Note: If GPS isn’t available, the donor will still save (lat/lon becomes 0,0). Distance
-          sorting will work best when GPS is captured.
+          Tip: If you register with a recent lastDonated, you won’t show in Eligible-only mode.
         </Text>
       </View>
     </ScrollView>
@@ -219,18 +277,9 @@ export default function BecomeDonorScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    gap: 12,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: "#666",
-    marginBottom: 8,
-  },
+  container: { padding: 16, gap: 12 },
+  title: { fontSize: 22, fontWeight: "700" },
+  subtitle: { color: "#666", marginBottom: 8 },
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -239,10 +288,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#eee",
   },
-  label: {
-    fontWeight: "600",
-    marginTop: 4,
-  },
+  label: { fontWeight: "600", marginTop: 4 },
   input: {
     borderWidth: 1,
     borderColor: "#ddd",
@@ -251,12 +297,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: "#fafafa",
   },
-  chipsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 6,
-  },
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -265,17 +306,9 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     backgroundColor: "#fff",
   },
-  chipActive: {
-    borderColor: "#111",
-    backgroundColor: "#111",
-  },
-  chipText: {
-    color: "#111",
-    fontWeight: "600",
-  },
-  chipTextActive: {
-    color: "#fff",
-  },
+  chipActive: { borderColor: "#111", backgroundColor: "#111" },
+  chipText: { color: "#111", fontWeight: "600" },
+  chipTextActive: { color: "#fff" },
   locationBox: {
     marginTop: 6,
     flexDirection: "row",
@@ -287,10 +320,7 @@ const styles = StyleSheet.create({
     borderColor: "#eee",
     backgroundColor: "#fafafa",
   },
-  locationText: {
-    color: "#444",
-    marginTop: 4,
-  },
+  locationText: { color: "#444", marginTop: 4 },
   smallBtn: {
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -299,9 +329,7 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     backgroundColor: "#fff",
   },
-  smallBtnText: {
-    fontWeight: "700",
-  },
+  smallBtnText: { fontWeight: "700" },
   primaryBtn: {
     marginTop: 10,
     backgroundColor: "#111",
@@ -309,18 +337,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
   },
-  primaryBtnDisabled: {
-    opacity: 0.45,
-  },
-  primaryBtnText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 16,
-  },
-  note: {
-    marginTop: 10,
-    color: "#666",
-    fontSize: 12,
-    lineHeight: 16,
-  },
+  primaryBtnDisabled: { opacity: 0.45 },
+  primaryBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  note: { marginTop: 10, color: "#666", fontSize: 12, lineHeight: 16 },
 });

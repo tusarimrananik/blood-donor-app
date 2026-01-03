@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Request {
+  id             String   @id @default(uuid())
+  requesterName  String
+  requesterPhone String
+  bloodGroup     String
+  message        String?
+  donorId        String
+  donor          Donor    @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+
+  @@index([donorId])
+  @@index([requesterPhone])
+  @@index([donorId, requesterPhone, createdAt])
+}
+
+model Donor {
+  id          String   @id @default(uuid())
+  name        String
+  phone       String   @unique
+  email       String   @unique
+  bloodGroup  String
+  area        String
+  lastDonated DateTime
+
+  // PostGIS Point (lon, lat), SRID 4326
+  location Unsupported("geometry(Point, 4326)")
+  requests Request[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("donors")
+}
