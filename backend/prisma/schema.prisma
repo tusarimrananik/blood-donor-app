@@ -19,6 +19,7 @@ model Request {
   @@index([donorId])
   @@index([requesterPhone])
   @@index([donorId, requesterPhone, createdAt])
+  @@map("requests")
 }
 
 model Donor {

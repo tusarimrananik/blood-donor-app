@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { API_BASE } from "@/constants/api";
 
 type DonorPayload = {
   name: string;
@@ -24,9 +25,6 @@ type DonorPayload = {
 };
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
-
-// Expo Web (Windows Chrome)
-const API_BASE = "http://localhost:4000";
 
 export default function BecomeDonorScreen() {
   const router = useRouter();

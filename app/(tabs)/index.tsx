@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { API_BASE } from "@/constants/api";
 
 type Donor = {
   id: string;
@@ -25,9 +26,6 @@ type Donor = {
 };
 
 const BLOOD_GROUPS = ["All", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
-
-// Expo Web (Windows Chrome)
-const API_BASE = "http://localhost:4000";
 
 function toRad(n: number) {
   return (n * Math.PI) / 180;

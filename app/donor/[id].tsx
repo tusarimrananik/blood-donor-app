@@ -10,8 +10,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-
-const API_BASE = "http://localhost:4000";
+import { API_BASE } from "@/constants/api";
 
 type ApiDonor = {
   id: string;
