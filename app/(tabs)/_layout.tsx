@@ -27,11 +27,18 @@ export default function TabLayout() {
           height: 64 + insets.bottom,
           paddingTop: 10,
           paddingBottom: Math.max(10, insets.bottom),
-          backgroundColor: Colors.light.card,
+          backgroundColor: "#fbfcfe",
           borderTopWidth: 1,
-          borderTopColor: Colors.light.border,
+          borderTopColor: "#cfd8e3",
+          shadowColor: "#0f172a",
+          shadowOpacity: 0.08,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: -4 },
           elevation: 0,
         },
+        tabBarBackground: () => (
+          <></>
+        ),
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: "700",

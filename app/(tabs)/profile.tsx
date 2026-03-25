@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import React, { useEffect, useMemo, useState } from "react";
@@ -14,9 +15,26 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useAuth } from "@/app/lib/auth";
+import { Colors } from "@/constants/theme";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
 const GENDERS = ["Male", "Female", "Other"] as const;
+
+function firstInitial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || "U";
+}
+
+function formatDateLabel(value: string) {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString();
+}
+
+function statCompletion(fields: Array<string | null | undefined>) {
+  const filled = fields.filter(Boolean).length;
+  return Math.round((filled / fields.length) * 100);
+}
 
 export default function ProfileScreen() {
   const { user, updateProfile, logout } = useAuth();
@@ -33,8 +51,9 @@ export default function ProfileScreen() {
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
-  useEffect(() => {
+  const hydrateFromUser = () => {
     if (!user) return;
     setName(user.name);
     setPhone(user.phone);
@@ -47,13 +66,19 @@ export default function ProfileScreen() {
     setCanDonate(user.canDonate);
     setLat(user.lat);
     setLon(user.lon);
+  };
+
+  useEffect(() => {
+    hydrateFromUser();
   }, [user]);
 
-  const profileCompletion = useMemo(() => {
-    const fields = [name, phone, bloodGroup, area, lastDonated, gender, dateOfBirth, profileImage];
-    const filled = fields.filter((value) => Boolean(value)).length;
-    return `${Math.round((filled / fields.length) * 100)}%`;
-  }, [area, bloodGroup, dateOfBirth, gender, lastDonated, name, phone, profileImage]);
+  const profileCompletion = useMemo(
+    () => statCompletion([name, phone, bloodGroup, area, lastDonated, gender, dateOfBirth, profileImage]),
+    [area, bloodGroup, dateOfBirth, gender, lastDonated, name, phone, profileImage],
+  );
+
+  const locationLabel =
+    lat != null && lon != null ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : "Location not saved";
 
   const pickProfileImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -106,6 +131,7 @@ export default function ProfileScreen() {
         lon: lon ?? 0,
       });
 
+      setIsEditing(false);
       Alert.alert("Saved", "Your profile has been updated.");
     } catch (e: any) {
       Alert.alert("Update failed", e?.message || "Something went wrong.");
@@ -114,149 +140,314 @@ export default function ProfileScreen() {
     }
   };
 
-  const onLogout = async () => {
-    await logout();
+  const cancelEditing = () => {
+    hydrateFromUser();
+    setIsEditing(false);
   };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.hero}>
-        <TouchableOpacity style={styles.avatarWrap} onPress={pickProfileImage}>
-          {profileImage ? (
-            <Image source={{ uri: profileImage }} style={styles.avatar} contentFit="cover" />
-          ) : (
-            <Text style={styles.avatarFallback}>{name ? name.slice(0, 1).toUpperCase() : "U"}</Text>
-          )}
-        </TouchableOpacity>
+        <View style={styles.heroTop}>
+          <View style={styles.heroIdentity}>
+            <TouchableOpacity
+              style={styles.avatarWrap}
+              onPress={isEditing ? pickProfileImage : undefined}
+              activeOpacity={isEditing ? 0.85 : 1}
+            >
+              {profileImage ? (
+                <Image source={{ uri: profileImage }} style={styles.avatar} contentFit="cover" />
+              ) : (
+                <Text style={styles.avatarFallback}>{firstInitial(name || user?.name || "")}</Text>
+              )}
+              {isEditing ? (
+                <View style={styles.cameraBadge}>
+                  <Ionicons name="camera-outline" size={14} color="#fff" />
+                </View>
+              ) : null}
+            </TouchableOpacity>
 
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{user?.name || "Your Profile"}</Text>
-          <Text style={styles.subtitle}>{user?.email || "Manage your donor account"}</Text>
-          <Text style={styles.helper}>Profile completion: {profileCompletion}</Text>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.toggleRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.sectionTitle}>Available For Donation</Text>
-            <Text style={styles.helper}>
-              Turn this off when you do not want to appear in the donor list.
-            </Text>
+            <View style={styles.heroCopy}>
+              <Text style={styles.title}>{user?.name || "Your Profile"}</Text>
+              <Text style={styles.subtitle}>{user?.email || "Manage your donor account"}</Text>
+              <View style={styles.heroMetaRow}>
+                <View style={styles.heroMetaPill}>
+                  <Ionicons name="water-outline" size={13} color="#fff" />
+                  <Text style={styles.heroMetaText}>{bloodGroup || "Blood group"}</Text>
+                </View>
+                <View style={styles.heroMetaPill}>
+                  <Ionicons name="location-outline" size={13} color="#fff" />
+                  <Text style={styles.heroMetaText}>{area || "Area"}</Text>
+                </View>
+              </View>
+            </View>
           </View>
-          <Switch value={canDonate} onValueChange={setCanDonate} />
+
+          {!isEditing ? (
+            <TouchableOpacity style={styles.editBtn} onPress={() => setIsEditing(true)}>
+              <Ionicons name="create-outline" size={16} color="#fff" />
+              <Text style={styles.editBtnText}>Edit</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Personal Information</Text>
-
-        <Text style={styles.label}>Full Name</Text>
-        <TextInput value={name} onChangeText={setName} style={styles.input} />
-
-        <Text style={styles.label}>Phone</Text>
-        <TextInput
-          value={phone}
-          onChangeText={setPhone}
-          style={styles.input}
-          keyboardType={Platform.OS === "ios" ? "number-pad" : "phone-pad"}
-        />
-
-        <Text style={styles.label}>Area</Text>
-        <TextInput value={area} onChangeText={setArea} style={styles.input} />
-
-        <Text style={styles.label}>Date of Birth</Text>
-        <TextInput value={dateOfBirth} onChangeText={setDateOfBirth} style={styles.input} maxLength={10} />
-
-        <Text style={styles.label}>Last Donated</Text>
-        <TextInput value={lastDonated} onChangeText={setLastDonated} style={styles.input} maxLength={10} />
-
-        <Text style={styles.label}>Blood Group</Text>
-        <View style={styles.chipsRow}>
-          {BLOOD_GROUPS.map((item) => {
-            const active = bloodGroup === item;
-            return (
-              <TouchableOpacity
-                key={item}
-                style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setBloodGroup(item)}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
-              </TouchableOpacity>
-            );
-          })}
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{profileCompletion}%</Text>
+          <Text style={styles.statLabel}>Profile complete</Text>
         </View>
-
-        <Text style={styles.label}>Gender</Text>
-        <View style={styles.chipsRow}>
-          {GENDERS.map((item) => {
-            const active = gender === item;
-            return (
-              <TouchableOpacity
-                key={item}
-                style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setGender(item)}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{canDonate ? "ON" : "OFF"}</Text>
+          <Text style={styles.statLabel}>Donation status</Text>
         </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Location & Actions</Text>
-        <Text style={styles.helper}>
-          {lat != null && lon != null ? `Lat ${lat.toFixed(4)} | Lon ${lon.toFixed(4)}` : "No location saved"}
-        </Text>
+      {!isEditing ? (
+        <>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Donation Availability</Text>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryIcon}>
+                <Ionicons name={canDonate ? "heart-outline" : "pause-circle-outline"} size={18} color={Colors.light.tint} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.summaryLabel}>{canDonate ? "Available for donation" : "Currently unavailable"}</Text>
+                <Text style={styles.summaryValue}>
+                  {canDonate
+                    ? "You are visible in donor search and can respond to requests."
+                    : "You are hidden from donor search until you turn availability back on."}
+                </Text>
+              </View>
+            </View>
+          </View>
 
-        <TouchableOpacity style={styles.secondaryBtn} onPress={refreshLocation}>
-          <Text style={styles.secondaryBtnText}>Refresh location</Text>
-        </TouchableOpacity>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Personal Information</Text>
+            <InfoRow icon="person-outline" label="Full name" value={name || "Not set"} />
+            <InfoRow icon="call-outline" label="Phone" value={phone || "Not set"} />
+            <InfoRow icon="water-outline" label="Blood group" value={bloodGroup || "Not set"} />
+            <InfoRow icon="male-female-outline" label="Gender" value={gender || "Not set"} />
+            <InfoRow icon="location-outline" label="Area" value={area || "Not set"} />
+            <InfoRow icon="calendar-outline" label="Date of birth" value={formatDateLabel(dateOfBirth)} />
+            <InfoRow icon="medical-outline" label="Last donated" value={formatDateLabel(lastDonated)} />
+          </View>
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={save}>
-          <Text style={styles.primaryBtnText}>{saving ? "Saving..." : "Save profile"}</Text>
-        </TouchableOpacity>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Location & Account</Text>
+            <InfoRow icon="navigate-outline" label="Saved location" value={locationLabel} />
 
-        <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
-          <Text style={styles.logoutBtnText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={refreshLocation}>
+              <Ionicons name="locate-outline" size={18} color={Colors.light.text} />
+              <Text style={styles.secondaryBtnText}>Refresh location</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+              <Ionicons name="log-out-outline" size={18} color={Colors.light.danger} />
+              <Text style={styles.logoutBtnText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
+        <View style={styles.card}>
+          <View style={styles.editHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Edit Profile</Text>
+              <Text style={styles.sectionHint}>Update your donor information and save when you’re done.</Text>
+            </View>
+          </View>
+
+          <View style={styles.toggleCard}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleTitle}>Donation availability</Text>
+              <Text style={styles.toggleHint}>Control whether you appear in donor search results.</Text>
+            </View>
+            <Switch
+              value={canDonate}
+              onValueChange={setCanDonate}
+              trackColor={{ false: "#d1d5db", true: "#f8b4c3" }}
+              thumbColor={canDonate ? Colors.light.tint : "#f9fafb"}
+            />
+          </View>
+
+          <Text style={styles.label}>Full Name</Text>
+          <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Full name" />
+
+          <Text style={styles.label}>Phone</Text>
+          <TextInput
+            value={phone}
+            onChangeText={setPhone}
+            style={styles.input}
+            placeholder="017xxxxxxxx"
+            keyboardType={Platform.OS === "ios" ? "number-pad" : "phone-pad"}
+          />
+
+          <Text style={styles.label}>Area</Text>
+          <TextInput value={area} onChangeText={setArea} style={styles.input} placeholder="Mirpur, Dhaka" />
+
+          <View style={styles.inlineInputs}>
+            <View style={styles.inlineInputBlock}>
+              <Text style={styles.label}>Date of Birth</Text>
+              <TextInput
+                value={dateOfBirth}
+                onChangeText={setDateOfBirth}
+                style={styles.input}
+                placeholder="YYYY-MM-DD"
+                maxLength={10}
+              />
+            </View>
+            <View style={styles.inlineInputBlock}>
+              <Text style={styles.label}>Last Donated</Text>
+              <TextInput
+                value={lastDonated}
+                onChangeText={setLastDonated}
+                style={styles.input}
+                placeholder="YYYY-MM-DD"
+                maxLength={10}
+              />
+            </View>
+          </View>
+
+          <Text style={styles.label}>Blood Group</Text>
+          <View style={styles.chipsRow}>
+            {BLOOD_GROUPS.map((item) => {
+              const active = bloodGroup === item;
+              return (
+                <TouchableOpacity
+                  key={item}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setBloodGroup(item)}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={styles.label}>Gender</Text>
+          <View style={styles.chipsRow}>
+            {GENDERS.map((item) => {
+              const active = gender === item;
+              return (
+                <TouchableOpacity
+                  key={item}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setGender(item)}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.infoPanel}>
+            <View style={styles.infoRowInline}>
+              <Ionicons name="navigate-outline" size={16} color={Colors.light.icon} />
+              <Text style={styles.infoInlineText}>{locationLabel}</Text>
+            </View>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={refreshLocation}>
+              <Ionicons name="locate-outline" size={18} color={Colors.light.text} />
+              <Text style={styles.secondaryBtnText}>Refresh location</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.editActions}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={cancelEditing}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.primaryBtn} onPress={save}>
+              <Ionicons name="save-outline" size={18} color="#fff" />
+              <Text style={styles.primaryBtnText}>{saving ? "Saving..." : "Save changes"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </ScrollView>
+  );
+}
+
+function InfoRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.summaryRow}>
+      <View style={styles.summaryIcon}>
+        <Ionicons name={icon} size={18} color={Colors.light.tint} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.summaryLabel}>{label}</Text>
+        <Text style={styles.summaryValue}>{value}</Text>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     padding: 16,
-    gap: 12,
-    backgroundColor: "#f5f7fb",
+    gap: 14,
+    backgroundColor: Colors.light.background,
   },
   hero: {
     backgroundColor: "#102a43",
-    borderRadius: 22,
-    padding: 18,
-    flexDirection: "row",
-    alignItems: "center",
+    borderRadius: 24,
+    padding: 20,
     gap: 14,
   },
+  heroTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  heroIdentity: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    flex: 1,
+  },
   avatarWrap: {
-    width: 86,
-    height: 86,
+    width: 92,
+    height: 92,
     borderRadius: 999,
-    backgroundColor: "#dbeafe",
+    backgroundColor: "#e5e7eb",
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
   },
   avatar: {
     width: "100%",
     height: "100%",
   },
   avatarFallback: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: "900",
-    color: "#1d4ed8",
+    color: "#374151",
+  },
+  cameraBadge: {
+    position: "absolute",
+    right: 2,
+    bottom: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.light.tint,
+    borderWidth: 2,
+    borderColor: "#102a43",
+  },
+  heroCopy: {
+    flex: 1,
+    gap: 6,
   },
   title: {
     color: "#fff",
@@ -265,42 +456,149 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     color: "#d9e2ec",
+  },
+  heroMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
     marginTop: 4,
   },
-  helper: {
-    color: "#6b7280",
-    marginTop: 6,
+  heroMetaPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
   },
-  card: {
-    backgroundColor: "#fff",
+  heroMetaText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  editBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: Colors.light.card,
     borderRadius: 18,
     padding: 16,
-    gap: 10,
     borderWidth: 1,
-    borderColor: "#ececec",
+    borderColor: Colors.light.border,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: Colors.light.text,
+  },
+  statLabel: {
+    marginTop: 4,
+    color: Colors.light.icon,
+  },
+  card: {
+    backgroundColor: Colors.light.card,
+    borderRadius: 20,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "800",
-    color: "#111827",
+    color: Colors.light.text,
+  },
+  sectionHint: {
+    marginTop: 4,
+    color: Colors.light.icon,
+    lineHeight: 18,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingVertical: 4,
+  },
+  summaryIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fceef3",
+  },
+  summaryLabel: {
+    color: Colors.light.icon,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  summaryValue: {
+    color: Colors.light.text,
+    fontSize: 15,
+    fontWeight: "600",
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  editHeader: {
+    marginBottom: 2,
+  },
+  toggleCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 14,
+    borderRadius: 16,
+    padding: 14,
+    backgroundColor: Colors.light.surface,
+  },
+  toggleTitle: {
+    color: Colors.light.text,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  toggleHint: {
+    color: Colors.light.icon,
+    marginTop: 4,
+    lineHeight: 18,
   },
   label: {
-    marginTop: 4,
     fontWeight: "700",
-    color: "#111827",
+    color: Colors.light.text,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    backgroundColor: "#fafafa",
+    borderColor: Colors.light.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.surface,
+    color: Colors.light.text,
   },
-  toggleRow: {
+  inlineInputs: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    gap: 10,
+  },
+  inlineInputBlock: {
+    flex: 1,
+    gap: 8,
   },
   chipsRow: {
     flexDirection: "row",
@@ -313,48 +611,95 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: Colors.light.border,
   },
   chipActive: {
-    backgroundColor: "#111827",
-    borderColor: "#111827",
+    backgroundColor: Colors.light.tint,
+    borderColor: Colors.light.tint,
   },
   chipText: {
-    color: "#111827",
+    color: Colors.light.text,
     fontWeight: "700",
   },
   chipTextActive: {
     color: "#fff",
   },
-  secondaryBtn: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    paddingVertical: 12,
+  infoPanel: {
+    backgroundColor: Colors.light.surface,
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+  },
+  infoRowInline: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 8,
+  },
+  infoInlineText: {
+    color: Colors.light.text,
+    fontWeight: "600",
+  },
+  secondaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    paddingVertical: 13,
+    backgroundColor: "#fff",
   },
   secondaryBtnText: {
-    color: "#111827",
+    color: Colors.light.text,
     fontWeight: "700",
   },
-  primaryBtn: {
-    backgroundColor: "#102a43",
-    borderRadius: 12,
+  editActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  cancelBtn: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
     paddingVertical: 14,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  cancelBtnText: {
+    color: Colors.light.text,
+    fontWeight: "800",
+  },
+  primaryBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 14,
+    paddingVertical: 14,
   },
   primaryBtnText: {
     color: "#fff",
     fontWeight: "800",
   },
   logoutBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
+    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fee2e2",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 14,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
   },
   logoutBtnText: {
-    color: "#b91c1c",
+    color: Colors.light.danger,
     fontWeight: "800",
   },
 });

@@ -1,9 +1,11 @@
 import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
+import * as NavigationBar from "expo-navigation-bar";
 import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import "react-native-reanimated";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/app/lib/auth";
 import { Colors } from "@/constants/theme";
 
@@ -35,6 +37,16 @@ function AuthRedirector() {
   return null;
 }
 
+function SystemBars() {
+  useEffect(() => {
+    NavigationBar.setBackgroundColorAsync("#d9e2ec").catch(() => {});
+    NavigationBar.setButtonStyleAsync("dark").catch(() => {});
+    NavigationBar.setBorderColorAsync("#cbd5e1").catch(() => {});
+  }, []);
+
+  return null;
+}
+
 export default function RootLayout() {
   const theme = {
     ...DefaultTheme,
@@ -50,9 +62,10 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.light.background }} edges={["top", "bottom", "left", "right"]}>
+      <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
         <AuthProvider>
           <ThemeProvider value={theme}>
+            <SystemBars />
             <AuthRedirector />
             <Stack>
               <Stack.Screen name="auth" options={{ headerShown: false }} />
@@ -61,7 +74,7 @@ export default function RootLayout() {
             <StatusBar style="dark" backgroundColor={Colors.light.card} />
           </ThemeProvider>
         </AuthProvider>
-      </SafeAreaView>
+      </View>
     </SafeAreaProvider>
   );
 }

@@ -1,7 +1,9 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { API_BASE } from "@/constants/api";
+import { Colors } from "@/constants/theme";
 import { useAuth } from "@/app/lib/auth";
 
 type ActivityResponse = {
@@ -11,6 +13,8 @@ type ActivityResponse = {
     bloodGroup: string;
     area: string | null;
     hospital: string | null;
+    urgency: string;
+    donorId: string | null;
     status: string;
     message: string | null;
     createdAt: string;
@@ -24,6 +28,8 @@ type ActivityResponse = {
     bloodGroup: string;
     area: string | null;
     hospital: string | null;
+    urgency: string;
+    donorId: string | null;
     status: string;
     message: string | null;
     createdAt: string;
@@ -35,6 +41,8 @@ type ActivityResponse = {
     bloodGroup: string;
     area: string | null;
     hospital: string | null;
+    urgency: string;
+    donorId: string | null;
     status: string;
     message: string | null;
     createdAt: string;
@@ -54,10 +62,17 @@ function formatRelativeTime(input: string) {
   return date.toLocaleDateString();
 }
 
-function badgeForStatus(status: string) {
-  if (status === "ASSIGNED") return { label: "Assigned", bg: "#dbeafe", color: "#1d4ed8" };
-  if (status === "COMPLETED") return { label: "Completed", bg: "#d1fae5", color: "#065f46" };
-  return { label: "Open", bg: "#fef3c7", color: "#92400e" };
+function badgeForStatus(status: string, donorId: string | null) {
+  if (status === "COMPLETED") return { label: "Completed", bg: "#d1fae5", color: Colors.light.success };
+  if (status === "CANCELLED") return { label: "Cancelled", bg: "#fee2e2", color: Colors.light.danger };
+  if (status === "ASSIGNED" && donorId) return { label: "Assigned", bg: "#dbeafe", color: Colors.light.info };
+  return { label: "Open", bg: "#fef3c7", color: Colors.light.warning };
+}
+
+function urgencyLabel(urgency: string) {
+  if (urgency === "URGENT") return "Urgent";
+  if (urgency === "PRIORITY") return "Priority";
+  return "Standard";
 }
 
 export default function ActivityScreen() {
@@ -65,6 +80,7 @@ export default function ActivityScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"mine" | "incoming" | "responses">("mine");
+  const [workingKey, setWorkingKey] = useState<string | null>(null);
   const [data, setData] = useState<ActivityResponse>({
     ok: true,
     myRequests: [],
@@ -104,6 +120,23 @@ export default function ActivityScreen() {
     [data],
   );
 
+  const performAction = async (key: string, url: string, label: string) => {
+    setWorkingKey(key);
+    try {
+      const res = await authFetch(url, { method: "POST" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.message || `HTTP ${res.status}`);
+      }
+      await loadActivity();
+      Alert.alert("Updated", label);
+    } catch (e: any) {
+      Alert.alert("Action failed", e?.message || "Something went wrong.");
+    } finally {
+      setWorkingKey(null);
+    }
+  };
+
   return (
     <ScrollView
       contentContainerStyle={styles.container}
@@ -136,9 +169,11 @@ export default function ActivityScreen() {
 
       {tab === "mine" ? (
         <View style={styles.card}>
-          {data.myRequests.length === 0 ? <Text style={styles.emptyText}>You haven’t created any requests yet.</Text> : null}
+          {data.myRequests.length === 0 ? <Text style={styles.emptyText}>You haven't created any requests yet.</Text> : null}
           {data.myRequests.map((item) => {
-            const badge = badgeForStatus(item.status);
+            const badge = badgeForStatus(item.status, item.donorId);
+            const canCancel = badge.label === "Open";
+            const canComplete = badge.label === "Assigned";
             return (
               <View key={item.id} style={styles.itemCard}>
                 <View style={styles.rowBetween}>
@@ -151,8 +186,48 @@ export default function ActivityScreen() {
                   {item.area || "Area unknown"} • {item.hospital || "Hospital not listed"}
                 </Text>
                 {item.targetDonorName ? <Text style={styles.metaText}>Direct request to {item.targetDonorName}</Text> : null}
+                <View style={styles.inlineTag}>
+                  <Ionicons name="pulse-outline" size={14} color={Colors.light.icon} />
+                  <Text style={styles.inlineTagText}>{urgencyLabel(item.urgency)}</Text>
+                </View>
                 <Text style={styles.messageText}>{item.message || "No message provided."}</Text>
                 <Text style={styles.metaStrong}>{item.responseCount} donor response(s)</Text>
+                <View style={styles.actionsRow}>
+                  {canComplete ? (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.acceptBtn]}
+                      onPress={() =>
+                        performAction(
+                          `complete-${item.id}`,
+                          `${API_BASE}/requests/${encodeURIComponent(item.id)}/complete`,
+                          "Request marked as completed.",
+                        )
+                      }
+                      disabled={workingKey === `complete-${item.id}`}
+                    >
+                      <Text style={styles.acceptBtnText}>
+                        {workingKey === `complete-${item.id}` ? "Saving..." : "Accept"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {canCancel ? (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.cancelBtn]}
+                      onPress={() =>
+                        performAction(
+                          `cancel-${item.id}`,
+                          `${API_BASE}/requests/${encodeURIComponent(item.id)}/cancel`,
+                          "Your request has been cancelled.",
+                        )
+                      }
+                      disabled={workingKey === `cancel-${item.id}`}
+                    >
+                      <Text style={styles.cancelBtnText}>
+                        {workingKey === `cancel-${item.id}` ? "Saving..." : "Cancel"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <Text style={styles.timestampText}>Created {formatRelativeTime(item.createdAt)}</Text>
               </View>
             );
@@ -166,7 +241,8 @@ export default function ActivityScreen() {
             <Text style={styles.emptyText}>No one has directly requested you yet.</Text>
           ) : null}
           {data.requestsForMe.map((item) => {
-            const badge = badgeForStatus(item.status);
+            const badge = badgeForStatus(item.status, item.donorId);
+            const canRespond = badge.label === "Open";
             return (
               <View key={item.id} style={styles.itemCard}>
                 <View style={styles.rowBetween}>
@@ -181,7 +257,47 @@ export default function ActivityScreen() {
                 <Text style={styles.metaText}>
                   {item.area || "Area unknown"} • {item.hospital || "Hospital not listed"}
                 </Text>
+                <View style={styles.inlineTag}>
+                  <Ionicons name="pulse-outline" size={14} color={Colors.light.icon} />
+                  <Text style={styles.inlineTagText}>{urgencyLabel(item.urgency)}</Text>
+                </View>
                 <Text style={styles.messageText}>{item.message || "No message provided."}</Text>
+                <View style={styles.actionsRow}>
+                  {canRespond ? (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.acceptBtn]}
+                      onPress={() =>
+                        performAction(
+                          `accept-${item.id}`,
+                          `${API_BASE}/requests/${encodeURIComponent(item.id)}/accept`,
+                          "You accepted this direct request.",
+                        )
+                      }
+                      disabled={workingKey === `accept-${item.id}`}
+                    >
+                      <Text style={styles.acceptBtnText}>
+                        {workingKey === `accept-${item.id}` ? "Saving..." : "Accept"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {canRespond ? (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.cancelBtn]}
+                      onPress={() =>
+                        performAction(
+                          `decline-${item.id}`,
+                          `${API_BASE}/requests/${encodeURIComponent(item.id)}/cancel`,
+                          "You cancelled this direct request.",
+                        )
+                      }
+                      disabled={workingKey === `decline-${item.id}`}
+                    >
+                      <Text style={styles.cancelBtnText}>
+                        {workingKey === `decline-${item.id}` ? "Saving..." : "Cancel"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <Text style={styles.timestampText}>Created {formatRelativeTime(item.createdAt)}</Text>
               </View>
             );
@@ -192,10 +308,11 @@ export default function ActivityScreen() {
       {tab === "responses" ? (
         <View style={styles.card}>
           {data.myResponses.length === 0 ? (
-            <Text style={styles.emptyText}>You haven’t volunteered for any requests yet.</Text>
+            <Text style={styles.emptyText}>You haven't volunteered for any requests yet.</Text>
           ) : null}
           {data.myResponses.map((item) => {
-            const badge = badgeForStatus(item.status);
+            const badge = badgeForStatus(item.status, item.donorId);
+            const canWithdraw = badge.label === "Open";
             return (
               <View key={item.id} style={styles.itemCard}>
                 <View style={styles.rowBetween}>
@@ -208,7 +325,30 @@ export default function ActivityScreen() {
                   {item.bloodGroup} • {item.area || "Area unknown"}
                 </Text>
                 <Text style={styles.metaText}>{item.hospital || "Hospital not listed"}</Text>
+                <View style={styles.inlineTag}>
+                  <Ionicons name="pulse-outline" size={14} color={Colors.light.icon} />
+                  <Text style={styles.inlineTagText}>{urgencyLabel(item.urgency)}</Text>
+                </View>
                 <Text style={styles.messageText}>{item.message || "No message provided."}</Text>
+                <View style={styles.actionsRow}>
+                  {canWithdraw ? (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.cancelBtn]}
+                      onPress={() =>
+                        performAction(
+                          `withdraw-${item.requestId}`,
+                          `${API_BASE}/requests/${encodeURIComponent(item.requestId)}/withdraw`,
+                          "Your response has been cancelled.",
+                        )
+                      }
+                      disabled={workingKey === `withdraw-${item.requestId}`}
+                    >
+                      <Text style={styles.cancelBtnText}>
+                        {workingKey === `withdraw-${item.requestId}` ? "Saving..." : "Cancel"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <Text style={styles.timestampText}>You volunteered {formatRelativeTime(item.volunteeredAt)}</Text>
               </View>
             );
@@ -241,4 +381,46 @@ const styles = StyleSheet.create({
   timestampText: { color: "#6b7280", fontSize: 12 },
   emptyText: { color: "#6b7280", lineHeight: 20 },
   errorText: { color: "#b91c1c", fontWeight: "700" },
+  inlineTag: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#f3f4f6",
+  },
+  inlineTagText: {
+    color: "#4b5563",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  actionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 2,
+  },
+  actionBtn: {
+    minWidth: 96,
+    alignItems: "center",
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  acceptBtn: {
+    backgroundColor: "#dcfce7",
+  },
+  cancelBtn: {
+    backgroundColor: "#fee2e2",
+  },
+  acceptBtnText: {
+    color: "#166534",
+    fontWeight: "800",
+  },
+  cancelBtnText: {
+    color: "#b91c1c",
+    fontWeight: "800",
+  },
 });

@@ -7,7 +7,7 @@ type DonorSeed = {
   name: string;
   phone: string;
   email: string;
-  profileImage: string;
+  profileImage: string | null;
   bloodGroup: string;
   area: string;
   lastDonated: Date;
@@ -84,28 +84,6 @@ const requestBlueprints = [
   ["Jui Akter", "01910000016", "O+", "Need an O+ donor around Motijheel.", "Motijheel, Dhaka", "Central Hospital", "STANDARD", "OPEN", 15],
 ] as const;
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
-function colorFromName(name: string) {
-  const palette = ["#8b1e3f", "#14532d", "#0f766e", "#1d4ed8", "#7c2d12", "#6d28d9"];
-  const hash = [...name].reduce((total, char) => total + char.charCodeAt(0), 0);
-  return palette[hash % palette.length]!;
-}
-
-function avatarDataUri(name: string) {
-  const bg = colorFromName(name);
-  const text = initials(name);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><rect width="240" height="240" rx="120" fill="${bg}"/><text x="120" y="132" text-anchor="middle" font-size="84" font-family="Arial, Helvetica, sans-serif" font-weight="700" fill="#ffffff">${text}</text></svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
 function daysAgo(days: number) {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
@@ -121,7 +99,7 @@ const donors: DonorSeed[] = donorBlueprints.map(
     lastDonated: daysAgo(donatedDaysAgo),
     phone: `01710${String(index + 1).padStart(6, "0")}`,
     email: name.toLowerCase().replace(/[^a-z]+/g, ".").replace(/^\.+|\.+$/g, "") + "@example.com",
-    profileImage: avatarDataUri(name),
+    profileImage: null,
   }),
 );
 

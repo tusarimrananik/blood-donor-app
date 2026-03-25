@@ -1,9 +1,12 @@
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
+import * as NavigationBar from "expo-navigation-bar";
 import { Redirect } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -13,13 +16,41 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
+import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/app/lib/auth";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
 const GENDERS = ["Male", "Female", "Other"] as const;
 
+function formatDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function parseDateString(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+function yearsOld(date: Date, today = new Date()) {
+  let years = today.getFullYear() - date.getFullYear();
+  const monthDiff = today.getMonth() - date.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < date.getDate())) years -= 1;
+  return years;
+}
+
+function firstWord(name: string) {
+  return name.trim().split(/\s+/)[0] || "Photo";
+}
+
 export default function AuthScreen() {
   const { isAuthenticated, login, register } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [submitting, setSubmitting] = useState(false);
@@ -37,20 +68,46 @@ export default function AuthScreen() {
   const [canDonate, setCanDonate] = useState(true);
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
+  const [pickerField, setPickerField] = useState<"dateOfBirth" | "lastDonated" | null>(null);
 
-  const readyForRegister = useMemo(() => {
-    return (
-      name.trim().length >= 2 &&
-      email.trim().length > 3 &&
-      phone.trim().length >= 8 &&
-      password.length >= 6 &&
-      bloodGroup !== "" &&
-      area.trim().length >= 2 &&
-      /^\d{4}-\d{2}-\d{2}$/.test(lastDonated) &&
-      gender !== "" &&
-      /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)
-    );
-  }, [area, bloodGroup, dateOfBirth, email, gender, lastDonated, name, password, phone]);
+  const registerValidation = useMemo(() => {
+    const trimmedName = name.trim();
+    const trimmedArea = area.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPhone = phone.trim();
+    const birthDate = parseDateString(dateOfBirth);
+    const donationDate = parseDateString(lastDonated);
+    const now = new Date();
+
+    if (trimmedName.length < 2) return "Full name must be at least 2 characters.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) return "Enter a valid email address.";
+    if (!/^\+?\d{8,15}$/.test(trimmedPhone)) return "Phone must be 8 to 15 digits.";
+    if (password.length < 6) return "Password must be at least 6 characters.";
+    if (!bloodGroup) return "Select a blood group.";
+    if (trimmedArea.length < 2) return "Area must be at least 2 characters.";
+    if (!gender) return "Select a gender.";
+    if (!birthDate) return "Select a valid date of birth.";
+    if (birthDate.getTime() > now.getTime()) return "Date of birth cannot be in the future.";
+    if (yearsOld(birthDate, now) < 18) return "You must be at least 18 years old to register.";
+    if (!donationDate) return "Select a valid last donated date.";
+    if (donationDate.getTime() > now.getTime()) return "Last donated date cannot be in the future.";
+    if (lat == null || lon == null) return "Use your current location before registering.";
+    return "";
+  }, [area, bloodGroup, dateOfBirth, email, gender, lastDonated, lat, lon, name, password, phone]);
+
+  const readyForRegister = registerValidation === "";
+
+  useEffect(() => {
+    NavigationBar.setBackgroundColorAsync("#f5f7fb").catch(() => {});
+    NavigationBar.setButtonStyleAsync("dark").catch(() => {});
+    NavigationBar.setBorderColorAsync("#e5e7eb").catch(() => {});
+
+    return () => {
+      NavigationBar.setBackgroundColorAsync("#d9e2ec").catch(() => {});
+      NavigationBar.setButtonStyleAsync("dark").catch(() => {});
+      NavigationBar.setBorderColorAsync("#cbd5e1").catch(() => {});
+    };
+  }, []);
 
   if (isAuthenticated) {
     return <Redirect href="/(tabs)" />;
@@ -78,8 +135,7 @@ export default function AuthScreen() {
       return;
     }
 
-    const mimeType = asset.mimeType || "image/jpeg";
-    setProfileImage(`data:${mimeType};base64,${asset.base64}`);
+    setProfileImage(`data:${asset.mimeType || "image/jpeg"};base64,${asset.base64}`);
   };
 
   const captureLocation = async () => {
@@ -94,16 +150,34 @@ export default function AuthScreen() {
     setLon(position.coords.longitude);
   };
 
+  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (Platform.OS !== "ios") setPickerField(null);
+    if (event.type === "dismissed" || !selectedDate || !pickerField) return;
+
+    const formatted = formatDate(selectedDate);
+    if (pickerField === "dateOfBirth") {
+      setDateOfBirth(formatted);
+    } else {
+      setLastDonated(formatted);
+    }
+  };
+
   const submit = async () => {
     if (submitting) return;
     setSubmitting(true);
 
     try {
       if (mode === "login") {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim().toLowerCase())) {
+          throw new Error("Enter a valid email address.");
+        }
+        if (password.length < 6) {
+          throw new Error("Password must be at least 6 characters.");
+        }
         await login(email.trim().toLowerCase(), password);
       } else {
         if (!readyForRegister) {
-          throw new Error("Please fill all required fields before registering.");
+          throw new Error(registerValidation);
         }
 
         await register({
@@ -130,166 +204,199 @@ export default function AuthScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.hero}>
-        <Text style={styles.heroTitle}>BloodLink</Text>
-        <Text style={styles.heroSubtitle}>
-          Sign in to request blood, manage your donor profile, and respond to urgent community needs.
-        </Text>
-      </View>
-
-      <View style={styles.switchRow}>
-        <TouchableOpacity
-          style={[styles.switchBtn, mode === "login" && styles.switchBtnActive]}
-          onPress={() => setMode("login")}
+    <>
+      <StatusBar style="dark" backgroundColor="#f5f7fb" />
+      <KeyboardAvoidingView
+        style={styles.keyboardShell}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.container,
+            {
+              paddingTop: 16 + insets.top,
+              paddingBottom: 16 + Math.max(insets.bottom, 12),
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.switchText, mode === "login" && styles.switchTextActive]}>Login</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.switchBtn, mode === "register" && styles.switchBtnActive]}
-          onPress={() => setMode("register")}
-        >
-          <Text style={[styles.switchText, mode === "register" && styles.switchTextActive]}>Register</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.card}>
-        {mode === "register" ? (
-          <>
-            <TouchableOpacity style={styles.avatarPicker} onPress={pickProfileImage}>
-              {profileImage ? (
-                <Image source={{ uri: profileImage }} style={styles.avatarImage} contentFit="cover" />
-              ) : (
-                <Text style={styles.avatarPlaceholder}>Add Photo</Text>
-              )}
-            </TouchableOpacity>
-
-            <Text style={styles.label}>Full Name</Text>
-            <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Your full name" />
-
-            <Text style={styles.label}>Phone</Text>
-            <TextInput
-              value={phone}
-              onChangeText={setPhone}
-              style={styles.input}
-              placeholder="017xxxxxxxx"
-              keyboardType={Platform.OS === "ios" ? "number-pad" : "phone-pad"}
-            />
-
-            <Text style={styles.label}>Blood Group</Text>
-            <View style={styles.chipsRow}>
-              {BLOOD_GROUPS.map((item) => {
-                const active = bloodGroup === item;
-                return (
-                  <TouchableOpacity
-                    key={item}
-                    style={[styles.chip, active && styles.chipActive]}
-                    onPress={() => setBloodGroup(item)}
-                  >
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.label}>Gender</Text>
-            <View style={styles.chipsRow}>
-              {GENDERS.map((item) => {
-                const active = gender === item;
-                return (
-                  <TouchableOpacity
-                    key={item}
-                    style={[styles.chip, active && styles.chipActive]}
-                    onPress={() => setGender(item)}
-                  >
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.label}>Area</Text>
-            <TextInput value={area} onChangeText={setArea} style={styles.input} placeholder="Mirpur, Dhaka" />
-
-            <Text style={styles.label}>Date of Birth</Text>
-            <TextInput
-              value={dateOfBirth}
-              onChangeText={setDateOfBirth}
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              maxLength={10}
-            />
-
-            <Text style={styles.label}>Last Donated</Text>
-            <TextInput
-              value={lastDonated}
-              onChangeText={setLastDonated}
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              maxLength={10}
-            />
-
-            <TouchableOpacity
-              style={[styles.toggle, canDonate && styles.toggleActive]}
-              onPress={() => setCanDonate((value) => !value)}
-            >
-              <Text style={[styles.toggleText, canDonate && styles.toggleTextActive]}>
-                Ready to donate: {canDonate ? "ON" : "OFF"}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.secondaryBtn} onPress={captureLocation}>
-              <Text style={styles.secondaryBtnText}>
-                {lat != null && lon != null ? "Refresh location" : "Use current location"}
-              </Text>
-            </TouchableOpacity>
-
-            <Text style={styles.helperText}>
-              {lat != null && lon != null ? `Lat ${lat.toFixed(4)} | Lon ${lon.toFixed(4)}` : "Location not captured yet"}
+          <View style={styles.hero}>
+            <Text style={styles.heroTitle}>BloodLink</Text>
+            <Text style={styles.heroSubtitle}>
+              Sign in to request blood, manage your donor profile, and respond to urgent community needs.
             </Text>
-          </>
-        ) : null}
+          </View>
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-          placeholder="you@example.com"
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
+          <View style={styles.switchRow}>
+            <TouchableOpacity
+              style={[styles.switchBtn, mode === "login" && styles.switchBtnActive]}
+              onPress={() => setMode("login")}
+            >
+              <Text style={[styles.switchText, mode === "login" && styles.switchTextActive]}>Login</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.switchBtn, mode === "register" && styles.switchBtnActive]}
+              onPress={() => setMode("register")}
+            >
+              <Text style={[styles.switchText, mode === "register" && styles.switchTextActive]}>Register</Text>
+            </TouchableOpacity>
+          </View>
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          style={styles.input}
-          placeholder="At least 6 characters"
-          secureTextEntry
-        />
+          <View style={styles.card}>
+            {mode === "register" ? (
+              <>
+                <TouchableOpacity style={styles.avatarPicker} onPress={pickProfileImage}>
+                  {profileImage ? (
+                    <Image source={{ uri: profileImage }} style={styles.avatarImage} contentFit="cover" />
+                  ) : (
+                    <Text style={styles.avatarPlaceholder}>{firstWord(name)}</Text>
+                  )}
+                </TouchableOpacity>
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={submit} disabled={submitting}>
-          <Text style={styles.primaryBtnText}>
-            {submitting ? "Please wait..." : mode === "login" ? "Login" : "Create account"}
-          </Text>
-        </TouchableOpacity>
+                <Text style={styles.label}>Full Name</Text>
+                <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Your full name" />
 
-        {mode === "register" ? (
-          <Text style={styles.helperText}>
-            Registration saves your donor identity, profile picture, and personal details directly in the database.
-          </Text>
-        ) : null}
-      </View>
-    </ScrollView>
+                <Text style={styles.label}>Phone</Text>
+                <TextInput
+                  value={phone}
+                  onChangeText={setPhone}
+                  style={styles.input}
+                  placeholder="017xxxxxxxx"
+                  keyboardType={Platform.OS === "ios" ? "number-pad" : "phone-pad"}
+                />
+
+                <Text style={styles.label}>Blood Group</Text>
+                <View style={styles.chipsRow}>
+                  {BLOOD_GROUPS.map((item) => {
+                    const active = bloodGroup === item;
+                    return (
+                      <TouchableOpacity
+                        key={item}
+                        style={[styles.chip, active && styles.chipActive]}
+                        onPress={() => setBloodGroup(item)}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.label}>Gender</Text>
+                <View style={styles.chipsRow}>
+                  {GENDERS.map((item) => {
+                    const active = gender === item;
+                    return (
+                      <TouchableOpacity
+                        key={item}
+                        style={[styles.chip, active && styles.chipActive]}
+                        onPress={() => setGender(item)}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.label}>Area</Text>
+                <TextInput value={area} onChangeText={setArea} style={styles.input} placeholder="Mirpur, Dhaka" />
+
+                <Text style={styles.label}>Date of Birth</Text>
+                <TouchableOpacity style={styles.dateField} onPress={() => setPickerField("dateOfBirth")}>
+                  <Text style={dateOfBirth ? styles.dateValue : styles.datePlaceholder}>
+                    {dateOfBirth || "Pick your date of birth"}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={styles.label}>Last Donated</Text>
+                <TouchableOpacity style={styles.dateField} onPress={() => setPickerField("lastDonated")}>
+                  <Text style={lastDonated ? styles.dateValue : styles.datePlaceholder}>
+                    {lastDonated || "Pick your last donation date"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.toggle, canDonate && styles.toggleActive]}
+                  onPress={() => setCanDonate((value) => !value)}
+                >
+                  <Text style={[styles.toggleText, canDonate && styles.toggleTextActive]}>
+                    Ready to donate: {canDonate ? "ON" : "OFF"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.secondaryBtn} onPress={captureLocation}>
+                  <Text style={styles.secondaryBtnText}>
+                    {lat != null && lon != null ? "Refresh location" : "Use current location"}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={styles.helperText}>
+                  {lat != null && lon != null
+                    ? `Lat ${lat.toFixed(4)} | Lon ${lon.toFixed(4)}`
+                    : "Location is required for donor discovery"}
+                </Text>
+              </>
+            ) : null}
+
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              style={styles.input}
+              placeholder="you@example.com"
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              style={styles.input}
+              placeholder="At least 6 characters"
+              secureTextEntry
+            />
+
+            <TouchableOpacity style={styles.primaryBtn} onPress={submit} disabled={submitting}>
+              <Text style={styles.primaryBtnText}>
+                {submitting ? "Please wait..." : mode === "login" ? "Login" : "Create account"}
+              </Text>
+            </TouchableOpacity>
+
+            {mode === "register" ? (
+              <Text style={[styles.helperText, !readyForRegister && registerValidation ? styles.errorText : null]}>
+                {readyForRegister
+                  ? "Registration saves your donor identity, profile picture, and personal details directly in the database."
+                  : registerValidation}
+              </Text>
+            ) : null}
+          </View>
+
+          {pickerField ? (
+            <DateTimePicker
+              value={parseDateString(pickerField === "dateOfBirth" ? dateOfBirth : lastDonated) ?? new Date()}
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              maximumDate={new Date()}
+              onChange={handleDateChange}
+            />
+          ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardShell: {
+    flex: 1,
+  },
   container: {
-    padding: 16,
+    paddingHorizontal: 16,
     gap: 12,
     backgroundColor: "#f5f7fb",
+    flexGrow: 1,
   },
   hero: {
     backgroundColor: "#7c1637",
@@ -358,7 +465,10 @@ const styles = StyleSheet.create({
   },
   avatarPlaceholder: {
     color: "#6b7280",
-    fontWeight: "700",
+    fontWeight: "800",
+    fontSize: 18,
+    paddingHorizontal: 12,
+    textAlign: "center",
   },
   label: {
     fontWeight: "700",
@@ -371,6 +481,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 11,
     backgroundColor: "#fafafa",
+  },
+  dateField: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    backgroundColor: "#fafafa",
+  },
+  dateValue: {
+    color: "#111827",
+    fontWeight: "600",
+  },
+  datePlaceholder: {
+    color: "#9ca3af",
   },
   chipsRow: {
     flexDirection: "row",
@@ -440,5 +565,9 @@ const styles = StyleSheet.create({
   helperText: {
     color: "#6b7280",
     lineHeight: 18,
+  },
+  errorText: {
+    color: "#b91c1c",
+    fontWeight: "700",
   },
 });

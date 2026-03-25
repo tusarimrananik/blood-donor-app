@@ -6,19 +6,67 @@ import { prisma } from "../prisma.js";
 
 export const authRouter = Router();
 
+function parseDateOnly(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function yearsBetween(date: Date, now = new Date()) {
+  let years = now.getUTCFullYear() - date.getUTCFullYear();
+  const monthDiff = now.getUTCMonth() - date.getUTCMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getUTCDate() < date.getUTCDate())) {
+    years -= 1;
+  }
+  return years;
+}
+
+const phoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\+?\d{8,15}$/, "Phone must be 8 to 15 digits");
+
+const dateOnlySchema = (label: string) =>
+  z
+    .string()
+    .trim()
+    .refine((value) => parseDateOnly(value) !== null, `${label} must use a real YYYY-MM-DD date`);
+
 const authSchema = z.object({
-  email: z.string().email("Invalid email"),
+  email: z.string().trim().email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 const registerSchema = authSchema.extend({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  phone: z.string().min(8, "Phone must be at least 8 characters"),
+  name: z.string().trim().min(2, "Name must be at least 2 characters"),
+  phone: phoneSchema,
   bloodGroup: z.string().min(1, "Blood group is required"),
-  area: z.string().min(1, "Area is required"),
-  lastDonated: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format"),
+  area: z.string().trim().min(2, "Area is required"),
+  lastDonated: dateOnlySchema("Last donated").refine((value) => {
+    const date = parseDateOnly(value);
+    return date !== null && date.getTime() <= Date.now();
+  }, "Last donated cannot be in the future"),
   gender: z.string().min(1, "Gender is required"),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format"),
+  dateOfBirth: dateOnlySchema("Date of birth")
+    .refine((value) => {
+      const date = parseDateOnly(value);
+      return date !== null && date.getTime() <= Date.now();
+    }, "Date of birth cannot be in the future")
+    .refine((value) => {
+      const date = parseDateOnly(value);
+      return date !== null && yearsBetween(date) >= 18;
+    }, "You must be at least 18 years old"),
   lat: z.number().min(-90).max(90),
   lon: z.number().min(-180).max(180),
   canDonate: z.boolean().optional(),
@@ -26,13 +74,27 @@ const registerSchema = authSchema.extend({
 });
 
 const updateProfileSchema = z.object({
-  name: z.string().min(2).optional(),
-  phone: z.string().min(8).optional(),
+  name: z.string().trim().min(2).optional(),
+  phone: phoneSchema.optional(),
   bloodGroup: z.string().min(1).optional(),
-  area: z.string().min(1).optional(),
-  lastDonated: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  area: z.string().trim().min(2).optional(),
+  lastDonated: dateOnlySchema("Last donated")
+    .refine((value) => {
+      const date = parseDateOnly(value);
+      return date !== null && date.getTime() <= Date.now();
+    }, "Last donated cannot be in the future")
+    .optional(),
   gender: z.string().min(1).optional(),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateOfBirth: dateOnlySchema("Date of birth")
+    .refine((value) => {
+      const date = parseDateOnly(value);
+      return date !== null && date.getTime() <= Date.now();
+    }, "Date of birth cannot be in the future")
+    .refine((value) => {
+      const date = parseDateOnly(value);
+      return date !== null && yearsBetween(date) >= 18;
+    }, "You must be at least 18 years old")
+    .optional(),
   lat: z.number().min(-90).max(90).optional(),
   lon: z.number().min(-180).max(180).optional(),
   canDonate: z.boolean().optional(),

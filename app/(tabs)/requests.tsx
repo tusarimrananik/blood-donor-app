@@ -29,6 +29,7 @@ type RequestItem = {
   hospital: string | null;
   urgency: string;
   status: string;
+  targetDonorId: string | null;
   donorId: string | null;
   createdById: string | null;
   createdAt: string;
@@ -61,6 +62,10 @@ function formatRelativeTime(input: string) {
   if (diffDays < 7) return `${diffDays}d ago`;
 
   return date.toLocaleDateString();
+}
+
+function firstInitial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || "U";
 }
 
 function requestTone(urgency: string, status: string) {
@@ -319,9 +324,7 @@ export default function RequestsScreen() {
                   {item.createdByImage ? (
                     <Image source={{ uri: item.createdByImage }} style={styles.avatarMiniImage} contentFit="cover" />
                   ) : (
-                    <Text style={styles.avatarMiniText}>
-                      {(item.createdByName || item.requesterName).slice(0, 1).toUpperCase()}
-                    </Text>
+                    <Text style={styles.avatarMiniText}>{firstInitial(item.createdByName || item.requesterName)}</Text>
                   )}
                 </View>
 
@@ -587,7 +590,9 @@ const styles = StyleSheet.create({
   },
   avatarMiniText: {
     fontWeight: "900",
+    fontSize: 16,
     color: "#374151",
+    textAlign: "center",
   },
   requesterName: {
     fontSize: 16,

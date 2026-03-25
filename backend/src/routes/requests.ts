@@ -31,6 +31,13 @@ function clampInt(value: unknown, def: number, min: number, max: number) {
   return i;
 }
 
+function effectiveStatus(status: string, donorId: string | null) {
+  if (status === "COMPLETED") return "COMPLETED";
+  if (status === "CANCELLED") return "CANCELLED";
+  if (status === "ASSIGNED" && donorId) return "ASSIGNED";
+  return "OPEN";
+}
+
 requestsRouter.get("/", async (req: AuthedRequest, res) => {
   const limit = clampInt(req.query.limit, 20, 1, 100);
   const offset = clampInt(req.query.offset, 0, 0, 1_000_000_000);
@@ -113,6 +120,7 @@ requestsRouter.get("/", async (req: AuthedRequest, res) => {
       total,
       items: items.map((item) => ({
         ...item,
+        status: effectiveStatus(item.status, item.donorId),
         responseCount: Number(item.responseCount ?? 0n),
       })),
       limit,
@@ -135,6 +143,7 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
         area: string | null;
         hospital: string | null;
         urgency: string;
+        donorId: string | null;
         status: string;
         message: string | null;
         createdAt: Date;
@@ -148,6 +157,7 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
         r."area",
         r."hospital",
         r."urgency",
+        r."donorId",
         r."status",
         r."message",
         r."createdAt",
@@ -170,6 +180,7 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
         area: string | null;
         hospital: string | null;
         urgency: string;
+        donorId: string | null;
         status: string;
         message: string | null;
         createdAt: Date;
@@ -183,6 +194,7 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
         r."area",
         r."hospital",
         r."urgency",
+        r."donorId",
         r."status",
         r."message",
         r."createdAt"
@@ -200,6 +212,7 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
         area: string | null;
         hospital: string | null;
         urgency: string;
+        donorId: string | null;
         status: string;
         message: string | null;
         createdAt: Date;
@@ -214,6 +227,7 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
         r."area",
         r."hospital",
         r."urgency",
+        r."donorId",
         r."status",
         r."message",
         r."createdAt",
@@ -226,9 +240,19 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
 
     return res.json({
       ok: true,
-      myRequests: myRequests.map((item) => ({ ...item, responseCount: Number(item.responseCount ?? 0n) })),
-      requestsForMe,
-      myResponses,
+      myRequests: myRequests.map((item) => ({
+        ...item,
+        status: effectiveStatus(item.status, item.donorId),
+        responseCount: Number(item.responseCount ?? 0n),
+      })),
+      requestsForMe: requestsForMe.map((item) => ({
+        ...item,
+        status: effectiveStatus(item.status, item.donorId),
+      })),
+      myResponses: myResponses.map((item) => ({
+        ...item,
+        status: effectiveStatus(item.status, item.donorId),
+      })),
     });
   } catch (err) {
     console.error(err);
@@ -363,6 +387,184 @@ requestsRouter.post("/:id/respond", requireAuth, async (req: AuthedRequest, res)
     `;
 
     return res.status(201).json({ ok: true, message: "You volunteered for this request" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, message: "Server error" });
+  }
+});
+
+requestsRouter.post("/:id/accept", requireAuth, async (req: AuthedRequest, res) => {
+  const requestId = String(req.params.id || "").trim();
+  const user = req.authUser!;
+
+  if (!requestId) {
+    return res.status(400).json({ ok: false, message: "Missing request id" });
+  }
+
+  try {
+    const requestRows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        targetDonorId: string | null;
+        donorId: string | null;
+        status: string;
+      }>
+    >`
+      SELECT "id", "targetDonorId", "donorId", "status"
+      FROM "requests"
+      WHERE "id" = ${requestId}
+      LIMIT 1
+    `;
+
+    const request = requestRows[0];
+    if (!request) {
+      return res.status(404).json({ ok: false, message: "Request not found" });
+    }
+
+    if (request.targetDonorId !== user.id) {
+      return res.status(403).json({ ok: false, message: "Only the requested donor can accept this request" });
+    }
+
+    if (effectiveStatus(request.status, request.donorId) !== "OPEN") {
+      return res.status(400).json({ ok: false, message: "This request is no longer open" });
+    }
+
+    await prisma.$executeRaw`
+      UPDATE "requests"
+      SET
+        "donorId" = ${user.id},
+        "status" = 'ASSIGNED'
+      WHERE "id" = ${requestId}
+    `;
+
+    return res.json({ ok: true, message: "Request accepted" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, message: "Server error" });
+  }
+});
+
+requestsRouter.post("/:id/cancel", requireAuth, async (req: AuthedRequest, res) => {
+  const requestId = String(req.params.id || "").trim();
+  const user = req.authUser!;
+
+  if (!requestId) {
+    return res.status(400).json({ ok: false, message: "Missing request id" });
+  }
+
+  try {
+    const requestRows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        createdById: string | null;
+        targetDonorId: string | null;
+        donorId: string | null;
+        status: string;
+      }>
+    >`
+      SELECT "id", "createdById", "targetDonorId", "donorId", "status"
+      FROM "requests"
+      WHERE "id" = ${requestId}
+      LIMIT 1
+    `;
+
+    const request = requestRows[0];
+    if (!request) {
+      return res.status(404).json({ ok: false, message: "Request not found" });
+    }
+
+    if (request.createdById !== user.id && request.targetDonorId !== user.id) {
+      return res.status(403).json({ ok: false, message: "You cannot cancel this request" });
+    }
+
+    if (effectiveStatus(request.status, request.donorId) === "COMPLETED") {
+      return res.status(400).json({ ok: false, message: "Completed requests cannot be cancelled" });
+    }
+
+    await prisma.$executeRaw`
+      UPDATE "requests"
+      SET
+        "status" = 'CANCELLED',
+        "donorId" = NULL
+      WHERE "id" = ${requestId}
+    `;
+
+    return res.json({ ok: true, message: "Request cancelled" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, message: "Server error" });
+  }
+});
+
+requestsRouter.post("/:id/complete", requireAuth, async (req: AuthedRequest, res) => {
+  const requestId = String(req.params.id || "").trim();
+  const user = req.authUser!;
+
+  if (!requestId) {
+    return res.status(400).json({ ok: false, message: "Missing request id" });
+  }
+
+  try {
+    const requestRows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        createdById: string | null;
+        donorId: string | null;
+        status: string;
+      }>
+    >`
+      SELECT "id", "createdById", "donorId", "status"
+      FROM "requests"
+      WHERE "id" = ${requestId}
+      LIMIT 1
+    `;
+
+    const request = requestRows[0];
+    if (!request) {
+      return res.status(404).json({ ok: false, message: "Request not found" });
+    }
+
+    if (request.createdById !== user.id) {
+      return res.status(403).json({ ok: false, message: "Only the requester can complete this request" });
+    }
+
+    if (!request.donorId) {
+      return res.status(400).json({ ok: false, message: "A donor must be assigned before completion" });
+    }
+
+    await prisma.$executeRaw`
+      UPDATE "requests"
+      SET "status" = 'COMPLETED'
+      WHERE "id" = ${requestId}
+    `;
+
+    return res.json({ ok: true, message: "Request completed" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, message: "Server error" });
+  }
+});
+
+requestsRouter.post("/:id/withdraw", requireAuth, async (req: AuthedRequest, res) => {
+  const requestId = String(req.params.id || "").trim();
+  const user = req.authUser!;
+
+  if (!requestId) {
+    return res.status(400).json({ ok: false, message: "Missing request id" });
+  }
+
+  try {
+    const deleted = await prisma.$executeRaw`
+      DELETE FROM "request_responses"
+      WHERE "requestId" = ${requestId}
+        AND "donorId" = ${user.id}
+    `;
+
+    if (!deleted) {
+      return res.status(404).json({ ok: false, message: "You have not responded to this request" });
+    }
+
+    return res.json({ ok: true, message: "Response cancelled" });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ ok: false, message: "Server error" });

@@ -92,13 +92,8 @@ function normalizeLastDonated(input: string) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
+function firstInitial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || "D";
 }
 
 function distanceLabel(distance: number | null) {
@@ -303,11 +298,17 @@ export default function FindDonorsScreen() {
             style={[styles.input, { flex: 1 }]}
             placeholder="5"
           />
-          <TouchableOpacity style={styles.quickBtn} onPress={() => setMaxDistanceKmText("2")}>
-            <Text style={styles.quickBtnText}>2 km</Text>
+          <TouchableOpacity
+            style={[styles.quickBtn, maxDistanceKmText === "2" && styles.quickBtnActive]}
+            onPress={() => setMaxDistanceKmText("2")}
+          >
+            <Text style={[styles.quickBtnText, maxDistanceKmText === "2" && styles.quickBtnTextActive]}>2 km</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickBtn} onPress={() => setMaxDistanceKmText("5")}>
-            <Text style={styles.quickBtnText}>5 km</Text>
+          <TouchableOpacity
+            style={[styles.quickBtn, maxDistanceKmText === "5" && styles.quickBtnActive]}
+            onPress={() => setMaxDistanceKmText("5")}
+          >
+            <Text style={[styles.quickBtnText, maxDistanceKmText === "5" && styles.quickBtnTextActive]}>5 km</Text>
           </TouchableOpacity>
         </View>
 
@@ -378,7 +379,7 @@ export default function FindDonorsScreen() {
                   {donor.profileImage ? (
                     <Image source={{ uri: donor.profileImage }} style={styles.avatar} contentFit="cover" />
                   ) : (
-                    <Text style={styles.avatarFallback}>{initials(donor.name)}</Text>
+                    <Text style={styles.avatarFallback}>{firstInitial(donor.name)}</Text>
                   )}
                 </View>
 
@@ -530,9 +531,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.light.border,
   },
+  quickBtnActive: {
+    backgroundColor: Colors.light.tint,
+    borderColor: Colors.light.tint,
+  },
   quickBtnText: {
     fontWeight: "700",
     color: Colors.light.text,
+  },
+  quickBtnTextActive: {
+    color: "#fff",
   },
   toggle: {
     flexDirection: "row",
@@ -610,16 +618,17 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#dbe4f0",
+    backgroundColor: "#e5e7eb",
   },
   avatar: {
     width: "100%",
     height: "100%",
   },
   avatarFallback: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: "800",
-    color: Colors.light.tint,
+    color: "#374151",
+    textAlign: "center",
   },
   infoRow: {
     flexDirection: "row",

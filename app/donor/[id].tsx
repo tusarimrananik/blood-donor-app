@@ -58,13 +58,8 @@ function safeParseDateYYYYMMDD(s: string) {
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
 const URGENCY_LEVELS = ["STANDARD", "PRIORITY", "URGENT"] as const;
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
+function firstInitial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || "D";
 }
 
 export default function DonorDetailsScreen() {
@@ -263,7 +258,7 @@ export default function DonorDetailsScreen() {
                   {donor.profileImage ? (
                     <Image source={{ uri: donor.profileImage }} style={styles.avatar} contentFit="cover" />
                   ) : (
-                    <Text style={styles.avatarFallback}>{initials(donor.name)}</Text>
+                    <Text style={styles.avatarFallback}>{firstInitial(donor.name)}</Text>
                   )}
                 </View>
 
@@ -421,10 +416,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#e2e8f0",
+    backgroundColor: "#e5e7eb",
   },
   avatar: { width: "100%", height: "100%" },
-  avatarFallback: { fontSize: 28, fontWeight: "900", color: Colors.light.tint },
+  avatarFallback: { fontSize: 28, fontWeight: "900", color: "#374151", textAlign: "center" },
   name: { fontSize: 22, fontWeight: "700" },
   subtleLine: { color: "#6b7280" },
   title: { fontSize: 18, fontWeight: "700", marginBottom: 6 },
