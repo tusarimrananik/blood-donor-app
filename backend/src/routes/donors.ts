@@ -58,6 +58,7 @@ donorsRouter.get("/:id", async (req, res) => {
         name: string;
         phone: string;
         email: string;
+        profileImage: string | null;
         bloodGroup: string;
         area: string;
         lastDonated: Date;
@@ -72,6 +73,7 @@ donorsRouter.get("/:id", async (req, res) => {
         "name",
         "phone",
         "email",
+        "profileImage",
         "bloodGroup",
         "area",
         "lastDonated",
@@ -124,6 +126,8 @@ donorsRouter.get("/", async (req, res) => {
         SELECT COUNT(*)::bigint AS "total"
         FROM "donors"
         WHERE
+          "canDonate" = true
+          AND
           (${eligibleOnly} = false OR "lastDonated" <= NOW() - INTERVAL '90 days')
           AND (${hasBloodFilter} = false OR "bloodGroup" = ${bloodGroup})
       `;
@@ -135,6 +139,7 @@ donorsRouter.get("/", async (req, res) => {
           name: string;
           phone: string;
           email: string;
+          profileImage: string | null;
           bloodGroup: string;
           area: string;
           lastDonated: Date;
@@ -149,6 +154,7 @@ donorsRouter.get("/", async (req, res) => {
           "name",
           "phone",
           "email",
+          "profileImage",
           "bloodGroup",
           "area",
           "lastDonated",
@@ -158,6 +164,8 @@ donorsRouter.get("/", async (req, res) => {
           "updatedAt"
         FROM "donors"
         WHERE
+          "canDonate" = true
+          AND
           (${eligibleOnly} = false OR "lastDonated" <= NOW() - INTERVAL '90 days')
           AND (${hasBloodFilter} = false OR "bloodGroup" = ${bloodGroup})
         ORDER BY "createdAt" DESC
@@ -180,6 +188,8 @@ donorsRouter.get("/", async (req, res) => {
       SELECT COUNT(*)::bigint AS "total"
       FROM "donors"
       WHERE
+        "canDonate" = true
+        AND
         (${eligibleOnly} = false OR "lastDonated" <= NOW() - INTERVAL '90 days')
         AND (${hasBloodFilter} = false OR "bloodGroup" = ${bloodGroup})
         AND ST_DistanceSphere(
@@ -190,13 +200,14 @@ donorsRouter.get("/", async (req, res) => {
     const total = Number(totalRows[0]?.total ?? 0n);
 
     const items = await prisma.$queryRaw<
-      Array<{
-        id: string;
-        name: string;
-        phone: string;
-        email: string;
-        bloodGroup: string;
-        area: string;
+        Array<{
+          id: string;
+          name: string;
+          phone: string;
+          email: string;
+          profileImage: string | null;
+          bloodGroup: string;
+          area: string;
         lastDonated: Date;
         lat: number;
         lon: number;
@@ -210,6 +221,7 @@ donorsRouter.get("/", async (req, res) => {
         "name",
         "phone",
         "email",
+        "profileImage",
         "bloodGroup",
         "area",
         "lastDonated",
@@ -225,6 +237,8 @@ donorsRouter.get("/", async (req, res) => {
         "updatedAt"
       FROM "donors"
       WHERE
+        "canDonate" = true
+        AND
         (${eligibleOnly} = false OR "lastDonated" <= NOW() - INTERVAL '90 days')
         AND (${hasBloodFilter} = false OR "bloodGroup" = ${bloodGroup})
         AND ST_DistanceSphere(

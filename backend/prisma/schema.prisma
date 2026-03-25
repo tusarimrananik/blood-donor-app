@@ -12,12 +12,23 @@ model Request {
   requesterPhone String
   bloodGroup     String
   message        String?
-  donorId        String
-  donor          Donor    @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  area           String?
+  hospital       String?
+  urgency        String   @default("STANDARD")
+  status         String   @default("OPEN")
+  targetDonorId  String?
+  targetDonor    Donor?   @relation("TargetedRequests", fields: [targetDonorId], references: [id], onDelete: SetNull)
+  donorId        String?
+  donor          Donor?   @relation("MatchedDonorRequests", fields: [donorId], references: [id], onDelete: SetNull)
+  createdById    String?
+  createdBy      Donor?   @relation("CreatedRequests", fields: [createdById], references: [id], onDelete: SetNull)
+  responses      RequestResponse[]
   createdAt      DateTime @default(now())
 
   @@index([donorId])
+  @@index([targetDonorId])
   @@index([requesterPhone])
+  @@index([createdById])
   @@index([donorId, requesterPhone, createdAt])
   @@map("requests")
 }
@@ -30,13 +41,35 @@ model Donor {
   bloodGroup  String
   area        String
   lastDonated DateTime
+  passwordHash String?
+  gender       String?
+  dateOfBirth  DateTime?
+  profileImage String?
+  canDonate    Boolean  @default(true)
 
   // PostGIS Point (lon, lat), SRID 4326
   location Unsupported("geometry(Point, 4326)")
-  requests Request[]
+  requestsMatched Request[] @relation("MatchedDonorRequests")
+  requestsCreated Request[] @relation("CreatedRequests")
+  requestsTargeted Request[] @relation("TargetedRequests")
+  requestResponses RequestResponse[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("donors")
+}
+
+model RequestResponse {
+  id         String   @id @default(uuid())
+  requestId  String
+  donorId    String
+  createdAt  DateTime @default(now())
+  request    Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  donor      Donor    @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, donorId])
+  @@index([requestId])
+  @@index([donorId])
+  @@map("request_responses")
 }

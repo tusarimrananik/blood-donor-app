@@ -1,341 +1,244 @@
-import * as Location from "expo-location";
-import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { useFocusEffect } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { API_BASE } from "@/constants/api";
+import { useAuth } from "@/app/lib/auth";
 
-type DonorPayload = {
-  name: string;
-  phone: string;
-  email: string;
-  bloodGroup: string;
-  area: string;
-  lastDonated: string; // YYYY-MM-DD (backend expects this)
-  lat: number;
-  lon: number;
+type ActivityResponse = {
+  ok: boolean;
+  myRequests: Array<{
+    id: string;
+    bloodGroup: string;
+    area: string | null;
+    hospital: string | null;
+    status: string;
+    message: string | null;
+    createdAt: string;
+    responseCount: number;
+    targetDonorName: string | null;
+  }>;
+  requestsForMe: Array<{
+    id: string;
+    requesterName: string;
+    requesterPhone: string;
+    bloodGroup: string;
+    area: string | null;
+    hospital: string | null;
+    status: string;
+    message: string | null;
+    createdAt: string;
+  }>;
+  myResponses: Array<{
+    id: string;
+    requestId: string;
+    requesterName: string;
+    bloodGroup: string;
+    area: string | null;
+    hospital: string | null;
+    status: string;
+    message: string | null;
+    createdAt: string;
+    volunteeredAt: string;
+  }>;
+  message?: string;
 };
 
-const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
+function formatRelativeTime(input: string) {
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+  const diffHours = Math.max(0, Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60)));
+  if (diffHours < 1) return "Just now";
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
 
-export default function BecomeDonorScreen() {
-  const router = useRouter();
+function badgeForStatus(status: string) {
+  if (status === "ASSIGNED") return { label: "Assigned", bg: "#dbeafe", color: "#1d4ed8" };
+  if (status === "COMPLETED") return { label: "Completed", bg: "#d1fae5", color: "#065f46" };
+  return { label: "Open", bg: "#fef3c7", color: "#92400e" };
+}
 
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [bloodGroup, setBloodGroup] = useState<(typeof BLOOD_GROUPS)[number] | "">("");
-  const [area, setArea] = useState("");
-  const [lastDonated, setLastDonated] = useState("");
+export default function ActivityScreen() {
+  const { authFetch } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState<"mine" | "incoming" | "responses">("mine");
+  const [data, setData] = useState<ActivityResponse>({
+    ok: true,
+    myRequests: [],
+    requestsForMe: [],
+    myResponses: [],
+  });
 
-  const [locStatus, setLocStatus] = useState<"idle" | "loading" | "granted" | "denied" | "error">(
-    "idle"
-  );
-  const [lat, setLat] = useState<number | null>(null);
-  const [lon, setLon] = useState<number | null>(null);
-
-  const [submitting, setSubmitting] = useState(false);
-
-  function normalizePhone(p: string) {
-    return p.replace(/\s+/g, "").trim();
-  }
-
-  function normalizeEmail(e: string) {
-    return e.trim().toLowerCase();
-  }
-
-  function isValidEmail(e: string) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-  }
-
-  const validation = useMemo(() => {
-    const nameOk = name.trim().length >= 2;
-    const phoneOk = normalizePhone(phone).length >= 8;
-    const emailOk = isValidEmail(normalizeEmail(email));
-    const bloodOk = bloodGroup !== "";
-    const areaOk = area.trim().length >= 2;
-    const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(lastDonated.trim());
-    return { nameOk, phoneOk, emailOk, bloodOk, areaOk, dateOk };
-  }, [name, phone, email, bloodGroup, area, lastDonated]);
-
-  const canRegister = useMemo(() => {
-    return (
-      validation.nameOk &&
-      validation.phoneOk &&
-      validation.emailOk &&
-      validation.bloodOk &&
-      validation.areaOk &&
-      validation.dateOk
-    );
-  }, [validation]);
-
-  async function captureLocation() {
+  const loadActivity = useCallback(async () => {
+    setLoading(true);
+    setError("");
     try {
-      setLocStatus("loading");
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setLocStatus("denied");
-        return;
+      const res = await authFetch(`${API_BASE}/requests/activity`);
+      const json = (await res.json().catch(() => null)) as ActivityResponse | null;
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.message || `HTTP ${res.status}`);
       }
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      setLat(pos.coords.latitude);
-      setLon(pos.coords.longitude);
-      setLocStatus("granted");
-    } catch {
-      setLocStatus("error");
-    }
-  }
-
-  useEffect(() => {
-    captureLocation();
-  }, []);
-
-  async function onRegister() {
-    if (submitting) return;
-
-    if (!canRegister) {
-      const reasons: string[] = [];
-      if (!validation.nameOk) reasons.push("• Name must be at least 2 letters");
-      if (!validation.phoneOk) reasons.push("• Phone must be at least 8 digits");
-      if (!validation.emailOk) reasons.push("• Email must be valid");
-      if (!validation.bloodOk) reasons.push("• Select a blood group");
-      if (!validation.areaOk) reasons.push("• Area must be at least 2 letters");
-      if (!validation.dateOk) reasons.push("• Last donated must be YYYY-MM-DD");
-      Alert.alert("Incomplete form", reasons.join("\n") || "Please fill all fields correctly.");
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const phoneNorm = normalizePhone(phone);
-      const emailNorm = normalizeEmail(email);
-
-      const payload: DonorPayload = {
-        name: name.trim(),
-        phone: phoneNorm,
-        email: emailNorm,
-        bloodGroup: bloodGroup as string,
-        area: area.trim(),
-        lastDonated: lastDonated.trim(), // ✅ send YYYY-MM-DD
-        lat: lat ?? 0,
-        lon: lon ?? 0,
-      };
-
-      const res = await fetch(`${API_BASE}/donors`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        const fieldErrors = json?.errors?.fieldErrors;
-        if (fieldErrors && typeof fieldErrors === "object") {
-          const lines: string[] = [];
-          for (const k of Object.keys(fieldErrors)) {
-            const arr = fieldErrors[k];
-            if (Array.isArray(arr)) lines.push(`• ${k}: ${arr.join(", ")}`);
-          }
-          if (lines.length) throw new Error(lines.join("\n"));
-        }
-
-        const msg = (json && (json.message || json.error)) || `Request failed (HTTP ${res.status})`;
-        const lower = String(msg).toLowerCase();
-        if (lower.includes("phone") && (lower.includes("unique") || lower.includes("duplicate"))) {
-          throw new Error("This phone number is already registered.");
-        }
-        if (lower.includes("email") && (lower.includes("unique") || lower.includes("duplicate"))) {
-          throw new Error("This email is already registered.");
-        }
-        throw new Error(msg);
-      }
-
-      Alert.alert("Success ✅", "You are registered as a donor!", [
-        { text: "OK", onPress: () => router.push("/" as const) },
-      ]);
-
-      setName("");
-      setPhone("");
-      setEmail("");
-      setBloodGroup("");
-      setArea("");
-      setLastDonated("");
+      setData(json);
     } catch (e: any) {
-      Alert.alert("Registration failed", e?.message || "Something went wrong.");
+      setError(e?.message || "Failed to load activity");
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
-  }
+  }, [authFetch]);
 
-  const visuallyDisabled = !canRegister || submitting;
+  useFocusEffect(
+    useCallback(() => {
+      loadActivity();
+    }, [loadActivity]),
+  );
+
+  const counts = useMemo(
+    () => ({
+      mine: data.myRequests.length,
+      incoming: data.requestsForMe.length,
+      responses: data.myResponses.length,
+    }),
+    [data],
+  );
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Become a Donor</Text>
-      <Text style={styles.subtitle}>Registers to backend (Neon + Prisma + PostGIS).</Text>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={loadActivity} />}
+    >
+      <View style={styles.hero}>
+        <Text style={styles.title}>Activity</Text>
+        <Text style={styles.subtitle}>
+          Track the requests you created, the direct requests sent to you, and the public requests you volunteered for.
+        </Text>
+      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Full Name</Text>
-        <TextInput value={name} onChangeText={setName} placeholder="e.g. Rahim Uddin" style={styles.input} />
+      <View style={styles.segmented}>
+        <TouchableOpacity style={[styles.segment, tab === "mine" && styles.segmentActive]} onPress={() => setTab("mine")}>
+          <Text style={[styles.segmentText, tab === "mine" && styles.segmentTextActive]}>My Requests ({counts.mine})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.segment, tab === "incoming" && styles.segmentActive]} onPress={() => setTab("incoming")}>
+          <Text style={[styles.segmentText, tab === "incoming" && styles.segmentTextActive]}>
+            Requests For Me ({counts.incoming})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.segment, tab === "responses" && styles.segmentActive]} onPress={() => setTab("responses")}>
+          <Text style={[styles.segmentText, tab === "responses" && styles.segmentTextActive]}>
+            My Responses ({counts.responses})
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-        <Text style={styles.label}>Phone Number</Text>
-        <TextInput
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="e.g. 017xxxxxxxx"
-          keyboardType={Platform.OS === "ios" ? "number-pad" : "phone-pad"}
-          style={styles.input}
-        />
+      {error ? <Text style={styles.errorText}>API error: {error}</Text> : null}
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="e.g. rahim@gmail.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.input}
-        />
-
-        <Text style={styles.label}>Blood Group</Text>
-        <View style={styles.chipsRow}>
-          {BLOOD_GROUPS.map((bg) => {
-            const active = bloodGroup === bg;
+      {tab === "mine" ? (
+        <View style={styles.card}>
+          {data.myRequests.length === 0 ? <Text style={styles.emptyText}>You haven’t created any requests yet.</Text> : null}
+          {data.myRequests.map((item) => {
+            const badge = badgeForStatus(item.status);
             return (
-              <TouchableOpacity
-                key={bg}
-                style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setBloodGroup(bg)}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{bg}</Text>
-              </TouchableOpacity>
+              <View key={item.id} style={styles.itemCard}>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.itemTitle}>{item.bloodGroup} request</Text>
+                  <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                    <Text style={[styles.badgeText, { color: badge.color }]}>{badge.label}</Text>
+                  </View>
+                </View>
+                <Text style={styles.metaText}>
+                  {item.area || "Area unknown"} • {item.hospital || "Hospital not listed"}
+                </Text>
+                {item.targetDonorName ? <Text style={styles.metaText}>Direct request to {item.targetDonorName}</Text> : null}
+                <Text style={styles.messageText}>{item.message || "No message provided."}</Text>
+                <Text style={styles.metaStrong}>{item.responseCount} donor response(s)</Text>
+                <Text style={styles.timestampText}>Created {formatRelativeTime(item.createdAt)}</Text>
+              </View>
             );
           })}
         </View>
+      ) : null}
 
-        <Text style={styles.label}>Area</Text>
-        <TextInput value={area} onChangeText={setArea} placeholder="e.g. Mirpur 10" style={styles.input} />
-
-        <Text style={styles.label}>Last Donated (YYYY-MM-DD)</Text>
-        <TextInput
-          value={lastDonated}
-          onChangeText={setLastDonated}
-          placeholder="e.g. 2025-09-01"
-          maxLength={10}
-          style={styles.input}
-        />
-
-        <View style={styles.locationBox}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Location (Auto)</Text>
-            <Text style={styles.locationText}>
-              {lat != null && lon != null
-                ? `Lat: ${lat.toFixed(6)} | Lon: ${lon.toFixed(6)}`
-                : locStatus === "loading"
-                ? "Getting location..."
-                : locStatus === "denied"
-                ? "Permission denied (will save 0,0)"
-                : locStatus === "error"
-                ? "Location error (will save 0,0)"
-                : "Not captured"}
-            </Text>
-          </View>
-
-          <TouchableOpacity style={styles.smallBtn} onPress={captureLocation}>
-            <Text style={styles.smallBtnText}>Use my GPS</Text>
-          </TouchableOpacity>
+      {tab === "incoming" ? (
+        <View style={styles.card}>
+          {data.requestsForMe.length === 0 ? (
+            <Text style={styles.emptyText}>No one has directly requested you yet.</Text>
+          ) : null}
+          {data.requestsForMe.map((item) => {
+            const badge = badgeForStatus(item.status);
+            return (
+              <View key={item.id} style={styles.itemCard}>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.itemTitle}>{item.requesterName}</Text>
+                  <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                    <Text style={[styles.badgeText, { color: badge.color }]}>{badge.label}</Text>
+                  </View>
+                </View>
+                <Text style={styles.metaText}>
+                  {item.bloodGroup} • {item.requesterPhone}
+                </Text>
+                <Text style={styles.metaText}>
+                  {item.area || "Area unknown"} • {item.hospital || "Hospital not listed"}
+                </Text>
+                <Text style={styles.messageText}>{item.message || "No message provided."}</Text>
+                <Text style={styles.timestampText}>Created {formatRelativeTime(item.createdAt)}</Text>
+              </View>
+            );
+          })}
         </View>
+      ) : null}
 
-        <TouchableOpacity
-          style={[styles.primaryBtn, visuallyDisabled && styles.primaryBtnDisabled]}
-          onPress={onRegister}
-          disabled={submitting}
-        >
-          <Text style={styles.primaryBtnText}>{submitting ? "Registering..." : "Register Donor"}</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.note}>
-          Tip: If you register with a recent lastDonated, you won’t show in Eligible-only mode.
-        </Text>
-      </View>
+      {tab === "responses" ? (
+        <View style={styles.card}>
+          {data.myResponses.length === 0 ? (
+            <Text style={styles.emptyText}>You haven’t volunteered for any requests yet.</Text>
+          ) : null}
+          {data.myResponses.map((item) => {
+            const badge = badgeForStatus(item.status);
+            return (
+              <View key={item.id} style={styles.itemCard}>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.itemTitle}>{item.requesterName}</Text>
+                  <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                    <Text style={[styles.badgeText, { color: badge.color }]}>{badge.label}</Text>
+                  </View>
+                </View>
+                <Text style={styles.metaText}>
+                  {item.bloodGroup} • {item.area || "Area unknown"}
+                </Text>
+                <Text style={styles.metaText}>{item.hospital || "Hospital not listed"}</Text>
+                <Text style={styles.messageText}>{item.message || "No message provided."}</Text>
+                <Text style={styles.timestampText}>You volunteered {formatRelativeTime(item.volunteeredAt)}</Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12 },
-  title: { fontSize: 22, fontWeight: "700" },
-  subtitle: { color: "#666", marginBottom: 8 },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "#eee",
-  },
-  label: { fontWeight: "600", marginTop: 4 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#fafafa",
-  },
-  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#fff",
-  },
-  chipActive: { borderColor: "#111", backgroundColor: "#111" },
-  chipText: { color: "#111", fontWeight: "600" },
-  chipTextActive: { color: "#fff" },
-  locationBox: {
-    marginTop: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#eee",
-    backgroundColor: "#fafafa",
-  },
-  locationText: { color: "#444", marginTop: 4 },
-  smallBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#fff",
-  },
-  smallBtnText: { fontWeight: "700" },
-  primaryBtn: {
-    marginTop: 10,
-    backgroundColor: "#111",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  primaryBtnDisabled: { opacity: 0.45 },
-  primaryBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  note: { marginTop: 10, color: "#666", fontSize: 12, lineHeight: 16 },
+  container: { padding: 16, gap: 12, backgroundColor: "#f5f7fb" },
+  hero: { backgroundColor: "#102a43", borderRadius: 20, padding: 18, gap: 8 },
+  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
+  subtitle: { color: "#d9e2ec", lineHeight: 20 },
+  segmented: { backgroundColor: "#fff", borderRadius: 16, padding: 6, gap: 6, borderWidth: 1, borderColor: "#ececec" },
+  segment: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 10 },
+  segmentActive: { backgroundColor: "#111827" },
+  segmentText: { color: "#374151", fontWeight: "700", textAlign: "center" },
+  segmentTextActive: { color: "#fff" },
+  card: { backgroundColor: "#fff", borderRadius: 18, padding: 16, gap: 12, borderWidth: 1, borderColor: "#ececec" },
+  itemCard: { backgroundColor: "#fcfcfc", borderRadius: 14, borderWidth: 1, borderColor: "#ececec", padding: 14, gap: 8 },
+  rowBetween: { flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "center" },
+  itemTitle: { fontSize: 16, fontWeight: "800", color: "#111827", flex: 1 },
+  metaText: { color: "#6b7280" },
+  metaStrong: { color: "#111827", fontWeight: "700" },
+  messageText: { color: "#111827", lineHeight: 20 },
+  badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  badgeText: { fontWeight: "800", fontSize: 12 },
+  timestampText: { color: "#6b7280", fontSize: 12 },
+  emptyText: { color: "#6b7280", lineHeight: 20 },
+  errorText: { color: "#b91c1c", fontWeight: "700" },
 });

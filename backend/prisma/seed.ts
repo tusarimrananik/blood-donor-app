@@ -7,6 +7,7 @@ type DonorSeed = {
   name: string;
   phone: string;
   email: string;
+  profileImage: string;
   bloodGroup: string;
   area: string;
   lastDonated: Date;
@@ -14,7 +15,22 @@ type DonorSeed = {
   longitude: number;
 };
 
-const donorBlueprints = [
+type DonorBlueprint = readonly [string, string, string, number, number, number];
+type RequestBlueprint = readonly [string, string, string, string, string, string, string, string, number];
+
+type RequestSeed = {
+  requesterName: string;
+  requesterPhone: string;
+  bloodGroup: string;
+  message: string;
+  area: string;
+  hospital: string;
+  urgency: string;
+  status: string;
+  donorId: string;
+};
+
+const donorBlueprints: DonorBlueprint[] = [
   ["Amina Rahman", "A+", "Dhanmondi, Dhaka", 23.7465, 90.3760, 140],
   ["Tanvir Hasan", "B+", "Mirpur 10, Dhaka", 23.8067, 90.3687, 118],
   ["Nusrat Jahan", "O-", "Uttara Sector 7, Dhaka", 23.8759, 90.3795, 156],
@@ -50,23 +66,45 @@ const donorBlueprints = [
 ] as const;
 
 const requestBlueprints = [
-  ["Rashed Khan", "01910000001", "A+", "Need blood for emergency surgery tonight.", 0],
-  ["Faria Sultana", "01910000002", "O-", "ICU patient needs O- donor urgently.", 2],
-  ["Karim Uddin", "01910000003", "B+", "Looking for a donor near Mirpur within the next few hours.", 1],
-  ["Morsheda Begum", "01910000004", "AB+", "Required for a scheduled transfusion tomorrow morning.", 3],
-  ["Imtiaz Hossain", "01910000005", "A-", "Patient admitted in Banani needs blood by evening.", 4],
-  ["Sanjida Akter", "01910000006", "O+", "Urgent replacement donor requested from Bashundhara.", 5],
-  ["Rehana Parvin", "01910000007", "B-", "Seeking a donor for a thalassemia patient.", 6],
-  ["Nabil Hasan", "01910000008", "AB-", "Very urgent need for rare blood group support.", 7],
-  ["Shawon Ahmed", "01910000009", "A+", "Hospital asked us to arrange one donor by noon.", 8],
-  ["Tasrifa Noor", "01910000010", "O+", "Need donor support near Badda today.", 9],
-  ["Jahidul Islam", "01910000011", "B+", "Family is searching for a B+ donor quickly.", 10],
-  ["Rumana Yasmin", "01910000012", "A-", "One unit needed for surgery prep.", 11],
-  ["Arafat Karim", "01910000013", "O-", "Urgent blood requirement for trauma care.", 12],
-  ["Nazia Rahman", "01910000014", "AB+", "Hospital requested an AB+ donor this afternoon.", 13],
-  ["Saiful Bari", "01910000015", "B-", "Please help arrange a donor around Tejgaon.", 14],
-  ["Jui Akter", "01910000016", "O+", "Need an O+ donor around Motijheel.", 15],
-];
+  ["Rashed Khan", "01910000001", "A+", "Need blood for emergency surgery tonight.", "Dhanmondi, Dhaka", "City Hospital", "URGENT", "ASSIGNED", 0],
+  ["Faria Sultana", "01910000002", "O-", "ICU patient needs O- donor urgently.", "Uttara, Dhaka", "Care Hospital", "URGENT", "OPEN", 2],
+  ["Karim Uddin", "01910000003", "B+", "Looking for a donor near Mirpur within the next few hours.", "Mirpur, Dhaka", "Mirpur General", "PRIORITY", "OPEN", 1],
+  ["Morsheda Begum", "01910000004", "AB+", "Required for a scheduled transfusion tomorrow morning.", "Mohammadpur, Dhaka", "Dhaka Medical", "STANDARD", "ASSIGNED", 3],
+  ["Imtiaz Hossain", "01910000005", "A-", "Patient admitted in Banani needs blood by evening.", "Banani, Dhaka", "Banani Clinic", "PRIORITY", "OPEN", 4],
+  ["Sanjida Akter", "01910000006", "O+", "Urgent replacement donor requested from Bashundhara.", "Bashundhara, Dhaka", "Evercare", "URGENT", "OPEN", 5],
+  ["Rehana Parvin", "01910000007", "B-", "Seeking a donor for a thalassemia patient.", "Wari, Dhaka", "Shishu Hospital", "STANDARD", "OPEN", 6],
+  ["Nabil Hasan", "01910000008", "AB-", "Very urgent need for rare blood group support.", "Shyamoli, Dhaka", "Popular Hospital", "URGENT", "OPEN", 7],
+  ["Shawon Ahmed", "01910000009", "A+", "Hospital asked us to arrange one donor by noon.", "Rampura, Dhaka", "Rampura Care", "PRIORITY", "OPEN", 8],
+  ["Tasrifa Noor", "01910000010", "O+", "Need donor support near Badda today.", "Badda, Dhaka", "United Hospital", "PRIORITY", "OPEN", 9],
+  ["Jahidul Islam", "01910000011", "B+", "Family is searching for a B+ donor quickly.", "Jatrabari, Dhaka", "Islamia Hospital", "PRIORITY", "OPEN", 10],
+  ["Rumana Yasmin", "01910000012", "A-", "One unit needed for surgery prep.", "Lalbagh, Dhaka", "Sir Salimullah", "STANDARD", "OPEN", 11],
+  ["Arafat Karim", "01910000013", "O-", "Urgent blood requirement for trauma care.", "Pallabi, Dhaka", "National Institute", "URGENT", "OPEN", 12],
+  ["Nazia Rahman", "01910000014", "AB+", "Hospital requested an AB+ donor this afternoon.", "Farmgate, Dhaka", "Square Hospital", "PRIORITY", "OPEN", 13],
+  ["Saiful Bari", "01910000015", "B-", "Please help arrange a donor around Tejgaon.", "Tejgaon, Dhaka", "Holy Family", "STANDARD", "OPEN", 14],
+  ["Jui Akter", "01910000016", "O+", "Need an O+ donor around Motijheel.", "Motijheel, Dhaka", "Central Hospital", "STANDARD", "OPEN", 15],
+] as const;
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function colorFromName(name: string) {
+  const palette = ["#8b1e3f", "#14532d", "#0f766e", "#1d4ed8", "#7c2d12", "#6d28d9"];
+  const hash = [...name].reduce((total, char) => total + char.charCodeAt(0), 0);
+  return palette[hash % palette.length]!;
+}
+
+function avatarDataUri(name: string) {
+  const bg = colorFromName(name);
+  const text = initials(name);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><rect width="240" height="240" rx="120" fill="${bg}"/><text x="120" y="132" text-anchor="middle" font-size="84" font-family="Arial, Helvetica, sans-serif" font-weight="700" fill="#ffffff">${text}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
 
 function daysAgo(days: number) {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -83,19 +121,27 @@ const donors: DonorSeed[] = donorBlueprints.map(
     lastDonated: daysAgo(donatedDaysAgo),
     phone: `01710${String(index + 1).padStart(6, "0")}`,
     email: name.toLowerCase().replace(/[^a-z]+/g, ".").replace(/^\.+|\.+$/g, "") + "@example.com",
+    profileImage: avatarDataUri(name),
   }),
 );
 
-const requests = requestBlueprints.map(([requesterName, requesterPhone, bloodGroup, message, donorIndex]) => ({
-  requesterName,
-  requesterPhone,
-  bloodGroup,
-  message,
-  donorId: donors[donorIndex]!.id,
-}));
+const requests: RequestSeed[] = requestBlueprints.map(
+  ([requesterName, requesterPhone, bloodGroup, message, area, hospital, urgency, status, donorIndex]) => ({
+    requesterName,
+    requesterPhone,
+    bloodGroup,
+    message,
+    area,
+    hospital,
+    urgency,
+    status,
+    donorId: status === "ASSIGNED" ? donors[donorIndex]!.id : "",
+  }),
+);
 
 async function main() {
   await prisma.$executeRaw`DELETE FROM "requests"`;
+  await prisma.$executeRaw`DELETE FROM "request_responses"`;
 
   await prisma.$executeRaw`DELETE FROM "donors"`;
 
@@ -106,6 +152,7 @@ async function main() {
         "name",
         "phone",
         "email",
+        "profileImage",
         "bloodGroup",
         "area",
         "lastDonated",
@@ -118,6 +165,7 @@ async function main() {
         ${donor.name},
         ${donor.phone},
         ${donor.email},
+        ${donor.profileImage},
         ${donor.bloodGroup},
         ${donor.area},
         ${donor.lastDonated},
@@ -128,7 +176,19 @@ async function main() {
     `;
   }
 
-  await prisma.request.createMany({ data: requests });
+  await prisma.request.createMany({
+    data: requests.map((request) => ({
+      requesterName: request.requesterName,
+      requesterPhone: request.requesterPhone,
+      bloodGroup: request.bloodGroup,
+      message: request.message,
+      area: request.area,
+      hospital: request.hospital,
+      urgency: request.urgency,
+      status: request.status,
+      donorId: request.donorId || null,
+    })),
+  });
 
   console.log(`Seeded ${donors.length} donors and ${requests.length} requests.`);
 }

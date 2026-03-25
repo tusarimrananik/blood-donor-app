@@ -1,3 +1,5 @@
+import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import * as Location from "expo-location";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
@@ -12,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { API_BASE } from "@/constants/api";
+import { Colors } from "@/constants/theme";
 
 type Donor = {
   id: string;
@@ -19,10 +22,32 @@ type Donor = {
   phone: string;
   bloodGroup: string;
   area: string;
+  profileImage: string | null;
   lat: number;
   lon: number;
   availableNow?: boolean;
-  lastDonated: string; // normalized to YYYY-MM-DD
+  lastDonated: string;
+};
+
+type ApiGetDonorsResponse = {
+  ok: boolean;
+  total: number;
+  items: Array<{
+    id: string;
+    name: string;
+    phone: string;
+    email?: string;
+    profileImage: string | null;
+    bloodGroup: string;
+    area: string;
+    lastDonated: string;
+    lat: number;
+    lon: number;
+  }>;
+  limit?: number;
+  offset?: number;
+  bloodGroup?: string;
+  eligibleOnly?: boolean;
 };
 
 const BLOOD_GROUPS = ["All", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
@@ -32,14 +57,14 @@ function toRad(n: number) {
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371;
+  const radius = 6371;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return radius * c;
 }
 
 function daysBetween(d1: Date, d2: Date) {
@@ -67,47 +92,33 @@ function normalizeLastDonated(input: string) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-type ApiGetDonorsResponse = {
-  ok: boolean;
-  total: number;
-  items: Array<{
-    id: string;
-    name: string;
-    phone: string;
-    email?: string;
-    bloodGroup: string;
-    area: string;
-    lastDonated: string; // ISO string from backend
-    lat: number;
-    lon: number;
-  }>;
-  limit?: number;
-  offset?: number;
-  bloodGroup?: string;
-  eligibleOnly?: boolean;
-};
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function distanceLabel(distance: number | null) {
+  return distance == null ? "GPS off" : `${distance.toFixed(1)} km away`;
+}
 
 export default function FindDonorsScreen() {
   const router = useRouter();
+  const fetchSeqRef = useRef(0);
 
   const [permissionStatus, setPermissionStatus] = useState<"idle" | "granted" | "denied">("idle");
   const [myLat, setMyLat] = useState<number | null>(null);
   const [myLon, setMyLon] = useState<number | null>(null);
-
   const [apiDonors, setApiDonors] = useState<Donor[]>([]);
   const [apiTotal, setApiTotal] = useState<number>(0);
-
   const [selectedGroup, setSelectedGroup] = useState<(typeof BLOOD_GROUPS)[number]>("All");
   const [maxDistanceKmText, setMaxDistanceKmText] = useState<string>("5");
-
-  // ✅ Toggle wired to backend now
   const [eligibleOnly, setEligibleOnly] = useState<boolean>(true);
-
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [apiError, setApiError] = useState<string>("");
-
-  // To avoid stale responses overwriting newer ones
-  const fetchSeqRef = useRef(0);
 
   const maxDistanceKm = useMemo(() => {
     const n = Number(maxDistanceKmText);
@@ -116,26 +127,17 @@ export default function FindDonorsScreen() {
 
   const fetchDonorsFromApi = useCallback(async () => {
     const seq = ++fetchSeqRef.current;
-
     setIsLoading(true);
     setApiError("");
 
     try {
       const params = new URLSearchParams();
-
-      // ✅ ONLY server filter: bloodGroup
-      // (Distance filtering is client-side using GPS if available)
-      if (selectedGroup !== "All") params.set("bloodGroup", selectedGroup); // AB+ auto-encodes to AB%2B
-
-      // ✅ Eligible toggle controls backend mode
+      if (selectedGroup !== "All") params.set("bloodGroup", selectedGroup);
       params.set("eligibleOnly", eligibleOnly ? "1" : "0");
-
       params.set("limit", "50");
       params.set("offset", "0");
 
-      const url = `${API_BASE}/donors?${params.toString()}`;
-
-      const res = await fetch(url);
+      const res = await fetch(`${API_BASE}/donors?${params.toString()}`);
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(`HTTP ${res.status} ${text}`);
@@ -150,6 +152,7 @@ export default function FindDonorsScreen() {
         phone: d.phone,
         bloodGroup: d.bloodGroup,
         area: d.area,
+        profileImage: d.profileImage,
         lat: d.lat,
         lon: d.lon,
         availableNow: true,
@@ -169,7 +172,7 @@ export default function FindDonorsScreen() {
     } finally {
       if (seq === fetchSeqRef.current) setIsLoading(false);
     }
-  }, [selectedGroup, eligibleOnly]);
+  }, [eligibleOnly, selectedGroup]);
 
   const requestMyLocation = useCallback(async () => {
     try {
@@ -187,20 +190,16 @@ export default function FindDonorsScreen() {
 
       setMyLat(pos.coords.latitude);
       setMyLon(pos.coords.longitude);
-
-      // ✅ IMPORTANT: DO NOT refetch donors here.
-      // GPS is only used for client-side distance filtering.
     } catch {
       Alert.alert("Location error", "Could not get your GPS location.");
     }
   }, []);
 
-  // Fetch donors on focus
   useFocusEffect(
     useCallback(() => {
       if (permissionStatus === "idle") requestMyLocation();
       fetchDonorsFromApi();
-    }, [permissionStatus, requestMyLocation, fetchDonorsFromApi])
+    }, [fetchDonorsFromApi, permissionStatus, requestMyLocation]),
   );
 
   const computedList = useMemo(() => {
@@ -223,55 +222,56 @@ export default function FindDonorsScreen() {
 
           const next = new Date(last.getTime());
           next.setDate(next.getDate() + 90);
-          const yyyy = next.getFullYear();
-          const mm = String(next.getMonth() + 1).padStart(2, "0");
-          const dd = String(next.getDate()).padStart(2, "0");
-          nextEligibleDate = `${yyyy}-${mm}-${dd}`;
+          nextEligibleDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
         } else {
           eligible = false;
-          daysLeft = 0;
-          nextEligibleDate = "";
         }
 
         return { donor: d, distance, eligible, daysLeft, nextEligibleDate };
       })
-      .filter((x) => {
-        const { donor, distance, eligible } = x;
-
+      .filter(({ donor, distance, eligible }) => {
         if (selectedGroup !== "All" && donor.bloodGroup !== selectedGroup) return false;
-
-        // ✅ Apply distance filter ONLY if we have GPS
         if (distance != null && distance > maxDistanceKm) return false;
-
-        // ✅ Toggle filters client-side too (backend already respects it)
         if (eligibleOnly && !eligible) return false;
-
         return true;
       })
       .sort((a, b) => {
         if (a.distance != null && b.distance != null) return a.distance - b.distance;
         return a.donor.name.localeCompare(b.donor.name);
       });
-  }, [apiDonors, myLat, myLon, selectedGroup, maxDistanceKm, eligibleOnly]);
+  }, [apiDonors, eligibleOnly, maxDistanceKm, myLat, myLon, selectedGroup]);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Find Donors</Text>
+      <View style={styles.hero}>
+        <View style={styles.heroIconWrap}>
+          <Ionicons name="water-outline" size={22} color="#fff" />
+        </View>
+        <Text style={styles.title}>Find blood donors nearby</Text>
+        <Text style={styles.subtitle}>
+          Browse active donors by blood group, location, and eligibility without leaving the app.
+        </Text>
+      </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Your Location</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Location</Text>
+          <TouchableOpacity style={styles.inlineButton} onPress={requestMyLocation}>
+            <Ionicons name="locate-outline" size={16} color={Colors.light.tint} />
+            <Text style={styles.inlineButtonText}>Refresh GPS</Text>
+          </TouchableOpacity>
+        </View>
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={requestMyLocation}>
-          <Text style={styles.primaryBtnText}>Get My GPS</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.muted}>
+        <View style={styles.infoRow}>
+          <Ionicons name="navigate-outline" size={16} color={Colors.light.icon} />
+          <Text style={styles.muted}>
+            {myLat != null && myLon != null
+              ? `Using your live location`
+              : "GPS is optional. You can still browse the donor directory."}
+          </Text>
+        </View>
+        <Text style={styles.microText}>
           Permission: {permissionStatus === "idle" ? "Not requested" : permissionStatus}
-        </Text>
-        <Text style={styles.muted}>
-          {myLat != null && myLon != null
-            ? `Lat: ${myLat.toFixed(6)} | Lon: ${myLon.toFixed(6)}`
-            : "GPS not available (still showing donors)."}
         </Text>
       </View>
 
@@ -294,61 +294,66 @@ export default function FindDonorsScreen() {
           })}
         </View>
 
-        <Text style={styles.label}>Max Distance (km)</Text>
-        <Text style={styles.muted}>(Distance filter works only after GPS is available)</Text>
-
+        <Text style={styles.label}>Max Distance</Text>
         <View style={styles.row}>
           <TextInput
             value={maxDistanceKmText}
             onChangeText={setMaxDistanceKmText}
             keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
             style={[styles.input, { flex: 1 }]}
-            placeholder="e.g. 5"
+            placeholder="5"
           />
           <TouchableOpacity style={styles.quickBtn} onPress={() => setMaxDistanceKmText("2")}>
-            <Text style={styles.quickBtnText}>2km</Text>
+            <Text style={styles.quickBtnText}>2 km</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickBtn} onPress={() => setMaxDistanceKmText("5")}>
-            <Text style={styles.quickBtnText}>5km</Text>
+            <Text style={styles.quickBtnText}>5 km</Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity
           style={[styles.toggle, eligibleOnly && styles.toggleActive]}
-          onPress={() => setEligibleOnly((p) => !p)}
+          onPress={() => setEligibleOnly((prev) => !prev)}
         >
+          <Ionicons
+            name={eligibleOnly ? "checkmark-circle" : "ellipse-outline"}
+            size={18}
+            color={eligibleOnly ? "#fff" : Colors.light.icon}
+          />
           <Text style={[styles.toggleText, eligibleOnly && styles.toggleTextActive]}>
-            Eligible only: {eligibleOnly ? "ON" : "OFF"}
+            Eligible donors only
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.quickBtn} onPress={fetchDonorsFromApi}>
-          <Text style={styles.quickBtnText}>{isLoading ? "Loading..." : "Refresh from API"}</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={fetchDonorsFromApi}>
+          <Ionicons name="refresh-outline" size={18} color="#fff" />
+          <Text style={styles.primaryBtnText}>{isLoading ? "Refreshing..." : "Refresh results"}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.muted}>
-          API donors loaded: {apiDonors.length} | API total: {apiTotal} | Mode:{" "}
-          {eligibleOnly ? "Eligible-only" : "All donors"}
+        <Text style={styles.microText}>
+          {computedList.length} shown from {apiTotal} available donors
         </Text>
-
         {apiError ? <Text style={styles.errorText}>API error: {apiError}</Text> : null}
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Results</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Results</Text>
+          <Text style={styles.microText}>{computedList.length} donors</Text>
+        </View>
 
         {computedList.length === 0 ? (
-          <Text style={styles.muted}>No donors match your filters.</Text>
+          <View style={styles.emptyState}>
+            <Ionicons name="search-outline" size={20} color={Colors.light.icon} />
+            <Text style={styles.muted}>No donors match these filters right now.</Text>
+          </View>
         ) : (
           computedList.map(({ donor, distance, eligible, daysLeft, nextEligibleDate }) => {
             const eligibleText = eligible
-              ? "✅ Eligible"
+              ? "Eligible now"
               : nextEligibleDate
-              ? `⏳ Eligible in ${daysLeft} days (${nextEligibleDate})`
-              : "⏳ Not eligible";
-
-            const distanceText =
-              distance == null ? "Distance: GPS off" : `${distance.toFixed(2)} km`;
+                ? `Eligible in ${daysLeft} days`
+                : "Not eligible";
 
             return (
               <TouchableOpacity
@@ -364,21 +369,48 @@ export default function FindDonorsScreen() {
                       lon: String(donor.lon),
                       eligible: String(eligible),
                       daysLeft: String(daysLeft),
-                      nextEligibleDate: nextEligibleDate,
+                      nextEligibleDate,
                     },
                   });
                 }}
               >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.donorName}>
-                    {donor.name} • {donor.bloodGroup}
-                  </Text>
-                  <Text style={styles.muted}>
-                    {donor.area} • {distanceText}
-                  </Text>
-                  <Text style={styles.eligibility}>{eligibleText}</Text>
+                <View style={styles.avatarWrap}>
+                  {donor.profileImage ? (
+                    <Image source={{ uri: donor.profileImage }} style={styles.avatar} contentFit="cover" />
+                  ) : (
+                    <Text style={styles.avatarFallback}>{initials(donor.name)}</Text>
+                  )}
                 </View>
-                <Text style={styles.chev}>›</Text>
+
+                <View style={styles.donorCopy}>
+                  <View style={styles.nameRow}>
+                    <Text style={styles.donorName}>{donor.name}</Text>
+                    <View style={styles.groupBadge}>
+                      <Text style={styles.groupBadgeText}>{donor.bloodGroup}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.infoRow}>
+                    <Ionicons name="location-outline" size={14} color={Colors.light.icon} />
+                    <Text style={styles.muted}>{donor.area}</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Ionicons name="navigate-outline" size={14} color={Colors.light.icon} />
+                    <Text style={styles.muted}>{distanceLabel(distance)}</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Ionicons
+                      name={eligible ? "checkmark-circle-outline" : "time-outline"}
+                      size={14}
+                      color={eligible ? Colors.light.success : Colors.light.warning}
+                    />
+                    <Text style={[styles.statusText, { color: eligible ? Colors.light.success : Colors.light.warning }]}>
+                      {eligibleText}
+                    </Text>
+                  </View>
+                </View>
+
+                <Ionicons name="chevron-forward" size={18} color={Colors.light.icon} />
               </TouchableOpacity>
             );
           })
@@ -389,79 +421,229 @@ export default function FindDonorsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12 },
-  title: { fontSize: 22, fontWeight: "700" },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 14,
+  container: {
+    padding: 16,
+    gap: 14,
+    backgroundColor: Colors.light.background,
+  },
+  hero: {
+    backgroundColor: Colors.light.tint,
+    borderRadius: 24,
+    padding: 20,
     gap: 10,
-    borderWidth: 1,
-    borderColor: "#eee",
   },
-  sectionTitle: { fontSize: 16, fontWeight: "800" },
-  primaryBtn: {
-    backgroundColor: "#111",
-    borderRadius: 12,
-    paddingVertical: 12,
+  heroIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
-  primaryBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  muted: { color: "#666" },
-  errorText: { color: "#b00020", fontWeight: "800" },
-  label: { fontWeight: "700", marginTop: 6 },
-  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
-  chip: {
+  title: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  subtitle: {
+    color: "#fde8ef",
+    lineHeight: 20,
+  },
+  card: {
+    backgroundColor: Colors.light.card,
+    borderRadius: 20,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: Colors.light.text,
+  },
+  inlineButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "#fceef3",
+  },
+  inlineButtonText: {
+    color: Colors.light.tint,
+    fontWeight: "700",
+  },
+  label: {
+    fontWeight: "700",
+    color: Colors.light.text,
+  },
+  chipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 13,
+    paddingVertical: 9,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: Colors.light.border,
     backgroundColor: "#fff",
   },
-  chipActive: { borderColor: "#111", backgroundColor: "#111" },
-  chipText: { color: "#111", fontWeight: "600" },
-  chipTextActive: { color: "#fff" },
-  row: { flexDirection: "row", alignItems: "center", gap: 8 },
+  chipActive: {
+    borderColor: Colors.light.tint,
+    backgroundColor: Colors.light.tint,
+  },
+  chipText: {
+    color: Colors.light.text,
+    fontWeight: "700",
+  },
+  chipTextActive: {
+    color: "#fff",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#fafafa",
+    borderColor: Colors.light.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.surface,
   },
   quickBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#fff",
-    alignItems: "center",
-  },
-  quickBtnText: { fontWeight: "800" },
-  toggle: {
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 12,
     paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: Colors.light.surface,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  quickBtnText: {
+    fontWeight: "700",
+    color: Colors.light.text,
+  },
+  toggle: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 14,
+    paddingVertical: 13,
     backgroundColor: "#fff",
   },
-  toggleActive: { backgroundColor: "#111", borderColor: "#111" },
-  toggleText: { fontWeight: "800", color: "#111" },
-  toggleTextActive: { color: "#fff" },
+  toggleActive: {
+    backgroundColor: Colors.light.tint,
+    borderColor: Colors.light.tint,
+  },
+  toggleText: {
+    fontWeight: "800",
+    color: Colors.light.text,
+  },
+  toggleTextActive: {
+    color: "#fff",
+  },
+  primaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 14,
+    paddingVertical: 14,
+  },
+  primaryBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+  },
   donorRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 12,
+    gap: 12,
+    paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: Colors.light.border,
   },
-  donorName: { fontWeight: "800", fontSize: 16 },
-  eligibility: { marginTop: 4, fontWeight: "700" },
-  chev: { fontSize: 26, color: "#999", paddingHorizontal: 6 },
+  donorCopy: {
+    flex: 1,
+    gap: 5,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  donorName: {
+    fontWeight: "800",
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  groupBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: "#fceef3",
+  },
+  groupBadgeText: {
+    color: Colors.light.tint,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  avatarWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 999,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dbe4f0",
+  },
+  avatar: {
+    width: "100%",
+    height: "100%",
+  },
+  avatarFallback: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: Colors.light.tint,
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  statusText: {
+    fontWeight: "700",
+  },
+  muted: {
+    color: "#526077",
+  },
+  microText: {
+    color: Colors.light.icon,
+    fontSize: 12,
+  },
+  emptyState: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+  },
+  errorText: {
+    color: Colors.light.danger,
+    fontWeight: "700",
+  },
 });
