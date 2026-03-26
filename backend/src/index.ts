@@ -10,6 +10,10 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
+app.get("/", (_req, res) => {
+  res.status(200).send("Blood donor API server is running.");
+});
+
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/auth", authRouter);
