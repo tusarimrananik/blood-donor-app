@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { API_BASE } from "@/constants/api";
 
 const AUTH_STORAGE_KEY = "AUTH_SESSION_V1";
+const REQUEST_TIMEOUT_MS = 15000;
 
 export type AuthUser = {
   id: string;
@@ -61,6 +62,25 @@ async function loadSession() {
   }
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new Error("Request timed out. Check that the API server is reachable and try again.");
+    }
+    throw new Error("Could not reach the server. Check your connection and API URL, then try again.");
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -89,14 +109,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       headers.set("Authorization", `Bearer ${token}`);
     }
 
-    return fetch(input, {
+    return fetchWithTimeout(input, {
       ...init,
       headers,
     });
   };
 
   const login = async (email: string, password: string) => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -111,7 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (payload: Record<string, unknown>) => {
-    const res = await fetch(`${API_BASE}/auth/register`, {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
