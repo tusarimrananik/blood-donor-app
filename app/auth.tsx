@@ -17,8 +17,8 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { StatusBar } from "expo-status-bar";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuth } from "@/app/lib/auth";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/lib/auth";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
 const GENDERS = ["Male", "Female", "Other"] as const;
@@ -98,14 +98,10 @@ export default function AuthScreen() {
   const readyForRegister = registerValidation === "";
 
   useEffect(() => {
-    NavigationBar.setBackgroundColorAsync("#f5f7fb").catch(() => {});
     NavigationBar.setButtonStyleAsync("dark").catch(() => {});
-    NavigationBar.setBorderColorAsync("#e5e7eb").catch(() => {});
 
     return () => {
-      NavigationBar.setBackgroundColorAsync("#d9e2ec").catch(() => {});
       NavigationBar.setButtonStyleAsync("dark").catch(() => {});
-      NavigationBar.setBorderColorAsync("#cbd5e1").catch(() => {});
     };
   }, []);
 
@@ -204,7 +200,7 @@ export default function AuthScreen() {
   };
 
   return (
-    <>
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <StatusBar style="dark" backgroundColor="#f5f7fb" />
       <KeyboardAvoidingView
         style={styles.keyboardShell}
@@ -212,11 +208,12 @@ export default function AuthScreen() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
       >
         <ScrollView
+          style={styles.scrollView}
           contentContainerStyle={[
             styles.container,
             {
-              paddingTop: 16 + insets.top,
-              paddingBottom: 16 + Math.max(insets.bottom, 12),
+              paddingTop: 16,
+              paddingBottom: 24 + Math.max(insets.bottom, 12),
             },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -384,13 +381,22 @@ export default function AuthScreen() {
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
-    </>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#f5f7fb",
+  },
   keyboardShell: {
     flex: 1,
+    backgroundColor: "#f5f7fb",
+  },
+  scrollView: {
+    flex: 1,
+    backgroundColor: "#f5f7fb",
   },
   container: {
     paddingHorizontal: 16,

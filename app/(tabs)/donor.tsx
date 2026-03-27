@@ -4,7 +4,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { API_BASE } from "@/constants/api";
 import { Colors } from "@/constants/theme";
-import { useAuth } from "@/app/lib/auth";
+import { useAuth } from "@/lib/auth";
 
 type ActivityResponse = {
   ok: boolean;

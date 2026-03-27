@@ -13,8 +13,10 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { API_BASE } from "@/constants/api";
-import { useAuth } from "@/app/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { Colors } from "@/constants/theme";
 
 type ApiDonor = {
@@ -65,6 +67,7 @@ function firstInitial(name: string) {
 export default function DonorDetailsScreen() {
   const router = useRouter();
   const { authFetch, user } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const params = useLocalSearchParams<{
     id?: string;
@@ -225,10 +228,18 @@ export default function DonorDetailsScreen() {
   };
 
   return (
-    <>
+    <SafeAreaView style={styles.safeArea} edges={["bottom"]}>
       <Stack.Screen options={{ title: "Donor Details", headerBackTitle: "Back" }} />
+      <StatusBar style="dark" backgroundColor={Colors.light.background} />
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.container,
+          { paddingBottom: 24 + Math.max(insets.bottom, 12) },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {loading ? (
           <View style={styles.card}>
             <Text style={styles.title}>Loading...</Text>
@@ -388,7 +399,7 @@ export default function DonorDetailsScreen() {
           </>
         )}
       </ScrollView>
-    </>
+    </SafeAreaView>
   );
 }
 
@@ -402,7 +413,9 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12, backgroundColor: "#f5f7fb" },
+  safeArea: { flex: 1, backgroundColor: "#f5f7fb" },
+  scrollView: { flex: 1, backgroundColor: "#f5f7fb" },
+  container: { padding: 16, gap: 12, backgroundColor: "#f5f7fb", flexGrow: 1 },
   card: { backgroundColor: "#fff", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: "#eee" },
   formCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: "#eee", gap: 10 },
   formTitle: { fontSize: 18, fontWeight: "800", color: "#111827" },

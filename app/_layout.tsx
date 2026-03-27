@@ -6,7 +6,7 @@ import React, { useEffect } from "react";
 import "react-native-reanimated";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { AuthProvider, useAuth } from "@/app/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { Colors } from "@/constants/theme";
 
 export const unstable_settings = {
@@ -39,9 +39,7 @@ function AuthRedirector() {
 
 function SystemBars() {
   useEffect(() => {
-    NavigationBar.setBackgroundColorAsync("#d9e2ec").catch(() => {});
     NavigationBar.setButtonStyleAsync("dark").catch(() => {});
-    NavigationBar.setBorderColorAsync("#cbd5e1").catch(() => {});
   }, []);
 
   return null;

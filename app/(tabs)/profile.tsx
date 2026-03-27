@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
-import { useAuth } from "@/app/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { Colors } from "@/constants/theme";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;

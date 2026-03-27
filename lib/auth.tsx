@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { API_BASE } from "@/constants/api";
 
 const AUTH_STORAGE_KEY = "AUTH_SESSION_V1";
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 45000;
 
 export type AuthUser = {
   id: string;
@@ -73,9 +73,9 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
     });
   } catch (error: any) {
     if (error?.name === "AbortError") {
-      throw new Error("Request timed out. Check that the API server is reachable and try again.");
+      throw new Error(`Request timed out while contacting ${API_BASE}. The server may be cold-starting or unreachable.`);
     }
-    throw new Error("Could not reach the server. Check your connection and API URL, then try again.");
+    throw new Error(`Could not reach ${API_BASE}. Check your connection and reload the app.`);
   } finally {
     clearTimeout(timeoutId);
   }
