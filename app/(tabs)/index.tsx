@@ -26,13 +26,13 @@ type Donor = {
   lat: number;
   lon: number;
   availableNow?: boolean;
-  lastDonated: string;
+  lastDonated: string | null;
 };
 
 type ApiGetDonorsResponse = {
   ok: boolean;
   total: number;
-  items: Array<{
+  items: {
     id: string;
     name: string;
     phone: string;
@@ -43,7 +43,7 @@ type ApiGetDonorsResponse = {
     lastDonated: string;
     lat: number;
     lon: number;
-  }>;
+  }[];
   limit?: number;
   offset?: number;
   bloodGroup?: string;
@@ -206,12 +206,12 @@ export default function FindDonorsScreen() {
         const distance =
           myLat != null && myLon != null ? haversineKm(myLat, myLon, d.lat, d.lon) : null;
 
-        const last = safeParseDateYYYYMMDD(d.lastDonated);
+        const last = d.lastDonated ? safeParseDateYYYYMMDD(normalizeLastDonated(d.lastDonated)) : null;
         let eligible = true;
         let daysLeft = 0;
         let nextEligibleDate = "";
 
-        if (last) {
+        if (d.lastDonated && last) {
           const passed = daysBetween(last, today);
           eligible = passed >= 90;
           daysLeft = eligible ? 0 : 90 - passed;
@@ -219,7 +219,7 @@ export default function FindDonorsScreen() {
           const next = new Date(last.getTime());
           next.setDate(next.getDate() + 90);
           nextEligibleDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
-        } else {
+        } else if (d.lastDonated) {
           eligible = false;
         }
 

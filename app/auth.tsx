@@ -55,6 +55,7 @@ export default function AuthScreen() {
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [submitting, setSubmitting] = useState(false);
+  const [registerAttempted, setRegisterAttempted] = useState(false);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -86,17 +87,20 @@ export default function AuthScreen() {
     if (password.length < 6) return "Password must be at least 6 characters.";
     if (!bloodGroup) return "Select a blood group.";
     if (trimmedArea.length < 2) return "Area must be at least 2 characters.";
-    if (!gender) return "Select a gender.";
-    if (!birthDate) return "Select a valid date of birth.";
-    if (birthDate.getTime() > now.getTime()) return "Date of birth cannot be in the future.";
-    if (yearsOld(birthDate, now) < 18) return "You must be at least 18 years old to register.";
-    if (!donationDate) return "Select a valid last donated date.";
-    if (donationDate.getTime() > now.getTime()) return "Last donated date cannot be in the future.";
+    if (dateOfBirth && !birthDate) return "Date of birth must use YYYY-MM-DD.";
+    if (birthDate && birthDate.getTime() > now.getTime()) return "Date of birth cannot be in the future.";
+    if (birthDate && yearsOld(birthDate, now) < 18) return "You must be at least 18 years old to register.";
+    if (lastDonated && !donationDate) return "Last donated must use YYYY-MM-DD.";
+    if (donationDate && donationDate.getTime() > now.getTime()) return "Last donated date cannot be in the future.";
     if (lat == null || lon == null) return "Use your current location before registering.";
     return "";
-  }, [area, bloodGroup, dateOfBirth, email, gender, lastDonated, lat, lon, name, password, phone]);
+  }, [area, bloodGroup, dateOfBirth, email, lastDonated, lat, lon, name, password, phone]);
 
   const readyForRegister = registerValidation === "";
+
+  useEffect(() => {
+    setRegisterAttempted(false);
+  }, [mode]);
 
   useEffect(() => {
     NavigationBar.setButtonStyleAsync("dark").catch(() => {});
@@ -174,6 +178,7 @@ export default function AuthScreen() {
         await login(email.trim().toLowerCase(), password);
       } else {
         if (!readyForRegister) {
+          setRegisterAttempted(true);
           throw new Error(registerValidation);
         }
 
@@ -184,9 +189,9 @@ export default function AuthScreen() {
           password,
           bloodGroup,
           area: area.trim(),
-          lastDonated,
-          gender,
-          dateOfBirth,
+          lastDonated: lastDonated || null,
+          gender: gender || null,
+          dateOfBirth: dateOfBirth || null,
           profileImage,
           canDonate,
           lat: lat ?? 0,
@@ -316,14 +321,14 @@ export default function AuthScreen() {
                 <Text style={styles.label}>Date of Birth</Text>
                 <TouchableOpacity style={styles.dateField} onPress={() => setPickerField("dateOfBirth")}>
                   <Text style={dateOfBirth ? styles.dateValue : styles.datePlaceholder}>
-                    {dateOfBirth || "Pick your date of birth"}
+                    {dateOfBirth || "Optional"}
                   </Text>
                 </TouchableOpacity>
 
                 <Text style={styles.label}>Last Donated</Text>
                 <TouchableOpacity style={styles.dateField} onPress={() => setPickerField("lastDonated")}>
                   <Text style={lastDonated ? styles.dateValue : styles.datePlaceholder}>
-                    {lastDonated || "Pick your last donation date"}
+                    {lastDonated || "Optional"}
                   </Text>
                 </TouchableOpacity>
 
@@ -378,10 +383,15 @@ export default function AuthScreen() {
             </TouchableOpacity>
 
             {mode === "register" ? (
-              <Text style={[styles.helperText, !readyForRegister && registerValidation ? styles.errorText : null]}>
-                {readyForRegister
-                  ? "Registration saves your donor identity, profile picture, and personal details directly in the database."
-                  : registerValidation}
+              <Text
+                style={[
+                  styles.helperText,
+                  registerAttempted && !readyForRegister && registerValidation ? styles.errorText : null,
+                ]}
+              >
+                {registerAttempted && !readyForRegister && registerValidation
+                  ? registerValidation
+                  : "Only your core donor details are required now. You can complete the rest later from your profile."}
               </Text>
             ) : null}
           </View>
@@ -503,6 +513,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 11,
     backgroundColor: "#fafafa",
+    color: "#111827",
   },
   dateField: {
     borderWidth: 1,

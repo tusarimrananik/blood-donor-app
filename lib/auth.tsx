@@ -1,9 +1,22 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
+import * as Notifications from "expo-notifications";
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { Platform } from "react-native";
 import { API_BASE } from "@/constants/api";
 
 const AUTH_STORAGE_KEY = "AUTH_SESSION_V1";
 const REQUEST_TIMEOUT_MS = 45000;
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 export type AuthUser = {
   id: string;
@@ -12,7 +25,7 @@ export type AuthUser = {
   phone: string;
   bloodGroup: string;
   area: string;
-  lastDonated: string;
+  lastDonated: string | null;
   gender: string | null;
   dateOfBirth: string | null;
   profileImage: string | null;
@@ -37,6 +50,7 @@ type AuthContextValue = {
   register: (payload: Record<string, unknown>) => Promise<void>;
   refreshMe: () => Promise<void>;
   updateProfile: (payload: Record<string, unknown>) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   logout: () => Promise<void>;
   authFetch: typeof fetch;
 };
@@ -81,6 +95,22 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   }
 }
 
+function getProjectId() {
+  const constantsAny = Constants as typeof Constants & {
+    easConfig?: { projectId?: string | null } | null;
+    expoConfig?: { extra?: { eas?: { projectId?: string | null } } } | null;
+    manifest2?: { extra?: { eas?: { projectId?: string | null } } } | null;
+    appOwnership?: string | null;
+  };
+
+  return (
+    constantsAny.easConfig?.projectId ??
+    constantsAny.expoConfig?.extra?.eas?.projectId ??
+    constantsAny.manifest2?.extra?.eas?.projectId ??
+    null
+  );
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -114,6 +144,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       headers,
     });
   };
+
+  useEffect(() => {
+    if (!token) return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        if (Platform.OS === "android") {
+          await Notifications.setNotificationChannelAsync("bloodlink-alerts", {
+            name: "BloodLink alerts",
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 150, 250],
+            lightColor: "#8b1e3f",
+          });
+        }
+
+        const constantsAny = Constants as typeof Constants & { appOwnership?: string | null };
+        if (Platform.OS === "android" && constantsAny.appOwnership === "expo") {
+          return;
+        }
+
+        const permission = await Notifications.getPermissionsAsync();
+        let status = permission.status;
+        if (status !== "granted") {
+          const nextPermission = await Notifications.requestPermissionsAsync();
+          status = nextPermission.status;
+        }
+
+        if (status !== "granted" || !alive) return;
+
+        const projectId = getProjectId();
+        if (!projectId) return;
+
+        const pushToken = await Notifications.getExpoPushTokenAsync({ projectId });
+        if (!alive) return;
+
+        await authFetch(`${API_BASE}/notifications/register-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: pushToken.data,
+            platform: Platform.OS,
+          }),
+        });
+      } catch (error) {
+        console.log("Push registration skipped:", error);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [token]);
 
   const login = async (email: string, password: string) => {
     const res = await fetchWithTimeout(`${API_BASE}/auth/login`, {
@@ -200,6 +284,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await persistSession({ token: token!, user: json.user as AuthUser });
   };
 
+  const deleteAccount = async () => {
+    const res = await authFetch(`${API_BASE}/auth/me`, {
+      method: "DELETE",
+    });
+
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.message || `HTTP ${res.status}`);
+    }
+
+    await persistSession(null);
+  };
+
   const logout = async () => {
     await persistSession(null);
   };
@@ -214,6 +311,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       refreshMe,
       updateProfile,
+      deleteAccount,
       logout,
       authFetch,
     }),

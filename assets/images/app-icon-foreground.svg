@@ -1,12 +1,16 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="panel" x1="250" y1="174" x2="810" y2="864" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#B3294A"/>
-      <stop offset="1" stop-color="#7A1734"/>
+    <linearGradient id="drop" x1="312" y1="214" x2="684" y2="814" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C52B55"/>
+      <stop offset="1" stop-color="#7F1737"/>
+    </linearGradient>
+    <linearGradient id="heart" x1="442" y1="355" x2="644" y2="542" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#FFE7EE"/>
     </linearGradient>
   </defs>
-  <path d="M512 224C427.531 224 352 292.401 352 388.25C352 557.402 505.252 685.517 512 800C518.748 685.517 672 557.402 672 388.25C672 292.401 596.469 224 512 224Z" fill="url(#panel)"/>
-  <path d="M428 446C428 391.324 472.324 347 527 347C557.143 347 584.14 360.485 602.289 381.748C620.437 360.485 647.434 347 677.578 347C732.254 347 776.578 391.324 776.578 446C776.578 519.701 704.861 559.503 634.651 619.141C624.804 627.507 610.663 627.507 600.816 619.141C530.607 559.503 428 519.701 428 446Z" fill="white" fill-opacity="0.96" transform="translate(-90 36) scale(0.78)"/>
-  <rect x="474" y="430" width="76" height="214" rx="26" fill="#9F1E40"/>
-  <rect x="405" y="499" width="214" height="76" rx="26" fill="#9F1E40"/>
+  <path d="M512 222C424.202 222 346 293.852 346 393.851C346 568.408 503.421 693.63 512 806C520.579 693.63 678 568.408 678 393.851C678 293.852 599.798 222 512 222Z" fill="url(#drop)"/>
+  <path d="M442 410C442 379.624 466.624 355 497 355C516.212 355 533.112 364.845 543 380.056C552.888 364.845 569.788 355 589 355C619.376 355 644 379.624 644 410C644 468.721 587.116 500.832 551.712 535.758C546.157 541.239 539.843 541.239 534.288 535.758C498.884 500.832 442 468.721 442 410Z" fill="url(#heart)"/>
+  <rect x="484" y="438" width="56" height="160" rx="24" fill="#B52149"/>
+  <rect x="432" y="490" width="160" height="56" rx="24" fill="#B52149"/>
 </svg>

@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 
 type ActivityResponse = {
   ok: boolean;
-  myRequests: Array<{
+  myRequests: {
     id: string;
     bloodGroup: string;
     area: string | null;
@@ -20,8 +20,19 @@ type ActivityResponse = {
     createdAt: string;
     responseCount: number;
     targetDonorName: string | null;
-  }>;
-  requestsForMe: Array<{
+    volunteers: {
+      id: string;
+      requestId: string;
+      donorId: string;
+      donorName: string;
+      donorPhone: string;
+      donorArea: string;
+      donorBloodGroup: string;
+      donorImage: string | null;
+      createdAt: string;
+    }[];
+  }[];
+  requestsForMe: {
     id: string;
     requesterName: string;
     requesterPhone: string;
@@ -33,8 +44,8 @@ type ActivityResponse = {
     status: string;
     message: string | null;
     createdAt: string;
-  }>;
-  myResponses: Array<{
+  }[];
+  myResponses: {
     id: string;
     requestId: string;
     requesterName: string;
@@ -47,7 +58,7 @@ type ActivityResponse = {
     message: string | null;
     createdAt: string;
     volunteeredAt: string;
-  }>;
+  }[];
   message?: string;
 };
 
@@ -169,7 +180,7 @@ export default function ActivityScreen() {
 
       {tab === "mine" ? (
         <View style={styles.card}>
-          {data.myRequests.length === 0 ? <Text style={styles.emptyText}>You haven't created any requests yet.</Text> : null}
+          {data.myRequests.length === 0 ? <Text style={styles.emptyText}>You haven&apos;t created any requests yet.</Text> : null}
           {data.myRequests.map((item) => {
             const badge = badgeForStatus(item.status, item.donorId);
             const canCancel = badge.label === "Open";
@@ -192,6 +203,60 @@ export default function ActivityScreen() {
                 </View>
                 <Text style={styles.messageText}>{item.message || "No message provided."}</Text>
                 <Text style={styles.metaStrong}>{item.responseCount} donor response(s)</Text>
+                {badge.label === "Open" && item.volunteers.length ? (
+                  <View style={styles.responseList}>
+                    <Text style={styles.responseListTitle}>Volunteer responses</Text>
+                    {item.volunteers.map((volunteer) => (
+                      <View key={volunteer.id} style={styles.responseCard}>
+                        <View style={styles.responseHeader}>
+                          <View style={styles.responseAvatar}>
+                            <Text style={styles.responseAvatarText}>{volunteer.donorName.charAt(0).toUpperCase()}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.responseName}>{volunteer.donorName}</Text>
+                            <Text style={styles.metaText}>
+                              {volunteer.donorBloodGroup} • {volunteer.donorPhone}
+                            </Text>
+                            <Text style={styles.metaText}>{volunteer.donorArea}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.actionsRow}>
+                          <TouchableOpacity
+                            style={[styles.actionBtn, styles.acceptBtn]}
+                            onPress={() =>
+                              performAction(
+                                `choose-${item.id}-${volunteer.donorId}`,
+                                `${API_BASE}/requests/${encodeURIComponent(item.id)}/responders/${encodeURIComponent(volunteer.donorId)}/accept`,
+                                `${volunteer.donorName} has been assigned to your request.`,
+                              )
+                            }
+                            disabled={workingKey === `choose-${item.id}-${volunteer.donorId}`}
+                          >
+                            <Text style={styles.acceptBtnText}>
+                              {workingKey === `choose-${item.id}-${volunteer.donorId}` ? "Saving..." : "Accept"}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[styles.actionBtn, styles.cancelBtn]}
+                            onPress={() =>
+                              performAction(
+                                `decline-response-${item.id}-${volunteer.donorId}`,
+                                `${API_BASE}/requests/${encodeURIComponent(item.id)}/responders/${encodeURIComponent(volunteer.donorId)}/decline`,
+                                `${volunteer.donorName}'s response has been declined.`,
+                              )
+                            }
+                            disabled={workingKey === `decline-response-${item.id}-${volunteer.donorId}`}
+                          >
+                            <Text style={styles.cancelBtnText}>
+                              {workingKey === `decline-response-${item.id}-${volunteer.donorId}` ? "Saving..." : "Decline"}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
                 <View style={styles.actionsRow}>
                   {canComplete ? (
                     <TouchableOpacity
@@ -287,13 +352,13 @@ export default function ActivityScreen() {
                         performAction(
                           `decline-${item.id}`,
                           `${API_BASE}/requests/${encodeURIComponent(item.id)}/cancel`,
-                          "You cancelled this direct request.",
+                          "You declined this direct request.",
                         )
                       }
                       disabled={workingKey === `decline-${item.id}`}
                     >
                       <Text style={styles.cancelBtnText}>
-                        {workingKey === `decline-${item.id}` ? "Saving..." : "Cancel"}
+                        {workingKey === `decline-${item.id}` ? "Saving..." : "Decline"}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
@@ -308,7 +373,7 @@ export default function ActivityScreen() {
       {tab === "responses" ? (
         <View style={styles.card}>
           {data.myResponses.length === 0 ? (
-            <Text style={styles.emptyText}>You haven't volunteered for any requests yet.</Text>
+            <Text style={styles.emptyText}>You haven&apos;t volunteered for any requests yet.</Text>
           ) : null}
           {data.myResponses.map((item) => {
             const badge = badgeForStatus(item.status, item.donorId);
@@ -344,7 +409,7 @@ export default function ActivityScreen() {
                       disabled={workingKey === `withdraw-${item.requestId}`}
                     >
                       <Text style={styles.cancelBtnText}>
-                        {workingKey === `withdraw-${item.requestId}` ? "Saving..." : "Cancel"}
+                        {workingKey === `withdraw-${item.requestId}` ? "Saving..." : "Withdraw"}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
@@ -376,6 +441,43 @@ const styles = StyleSheet.create({
   metaText: { color: "#6b7280" },
   metaStrong: { color: "#111827", fontWeight: "700" },
   messageText: { color: "#111827", lineHeight: 20 },
+  responseList: {
+    gap: 10,
+    marginTop: 2,
+  },
+  responseListTitle: {
+    color: "#374151",
+    fontWeight: "800",
+  },
+  responseCard: {
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  responseHeader: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
+  responseAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#e0e7ff",
+  },
+  responseAvatarText: {
+    color: "#4338ca",
+    fontWeight: "900",
+  },
+  responseName: {
+    color: "#111827",
+    fontWeight: "800",
+  },
   badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   badgeText: { fontWeight: "800", fontSize: 12 },
   timestampText: { color: "#6b7280", fontSize: 12 },

@@ -53,11 +53,14 @@ const registerSchema = authSchema.extend({
   phone: phoneSchema,
   bloodGroup: z.string().min(1, "Blood group is required"),
   area: z.string().trim().min(2, "Area is required"),
-  lastDonated: dateOnlySchema("Last donated").refine((value) => {
-    const date = parseDateOnly(value);
-    return date !== null && date.getTime() <= Date.now();
-  }, "Last donated cannot be in the future"),
-  gender: z.string().min(1, "Gender is required"),
+  lastDonated: dateOnlySchema("Last donated")
+    .refine((value) => {
+      const date = parseDateOnly(value);
+      return date !== null && date.getTime() <= Date.now();
+    }, "Last donated cannot be in the future")
+    .optional()
+    .nullable(),
+  gender: z.string().min(1, "Gender is required").optional().nullable(),
   dateOfBirth: dateOnlySchema("Date of birth")
     .refine((value) => {
       const date = parseDateOnly(value);
@@ -66,7 +69,9 @@ const registerSchema = authSchema.extend({
     .refine((value) => {
       const date = parseDateOnly(value);
       return date !== null && yearsBetween(date) >= 18;
-    }, "You must be at least 18 years old"),
+    }, "You must be at least 18 years old")
+    .optional()
+    .nullable(),
   lat: z.number().min(-90).max(90),
   lon: z.number().min(-180).max(180),
   canDonate: z.boolean().optional(),
@@ -83,8 +88,9 @@ const updateProfileSchema = z.object({
       const date = parseDateOnly(value);
       return date !== null && date.getTime() <= Date.now();
     }, "Last donated cannot be in the future")
-    .optional(),
-  gender: z.string().min(1).optional(),
+    .optional()
+    .nullable(),
+  gender: z.string().min(1).optional().nullable(),
   dateOfBirth: dateOnlySchema("Date of birth")
     .refine((value) => {
       const date = parseDateOnly(value);
@@ -94,7 +100,8 @@ const updateProfileSchema = z.object({
       const date = parseDateOnly(value);
       return date !== null && yearsBetween(date) >= 18;
     }, "You must be at least 18 years old")
-    .optional(),
+    .optional()
+    .nullable(),
   lat: z.number().min(-90).max(90).optional(),
   lon: z.number().min(-180).max(180).optional(),
   canDonate: z.boolean().optional(),
@@ -110,7 +117,7 @@ async function sanitizeUserById(id: string) {
       phone: string;
       bloodGroup: string;
       area: string;
-      lastDonated: Date;
+      lastDonated: Date | null;
       gender: string | null;
       dateOfBirth: Date | null;
       profileImage: string | null;
@@ -179,10 +186,10 @@ authRouter.post("/register", async (req, res) => {
         ${data.email.toLowerCase()},
         ${data.bloodGroup},
         ${data.area},
-        ${new Date(`${data.lastDonated}T00:00:00.000Z`)},
+        ${data.lastDonated ? new Date(`${data.lastDonated}T00:00:00.000Z`) : null},
         ${hashPassword(data.password)},
-        ${data.gender},
-        ${new Date(`${data.dateOfBirth}T00:00:00.000Z`)},
+        ${data.gender ?? null},
+        ${data.dateOfBirth ? new Date(`${data.dateOfBirth}T00:00:00.000Z`) : null},
         ${data.profileImage ?? null},
         ${data.canDonate ?? true},
         ST_SetSRID(ST_MakePoint(${data.lon}, ${data.lat}), 4326),
@@ -261,9 +268,19 @@ authRouter.patch("/me", requireAuth, async (req: AuthedRequest, res) => {
   const phone = next.phone ?? user.phone;
   const bloodGroup = next.bloodGroup ?? user.bloodGroup;
   const area = next.area ?? user.area;
-  const lastDonated = next.lastDonated ? new Date(`${next.lastDonated}T00:00:00.000Z`) : user.lastDonated;
-  const gender = next.gender ?? user.gender;
-  const dateOfBirth = next.dateOfBirth ? new Date(`${next.dateOfBirth}T00:00:00.000Z`) : user.dateOfBirth;
+  const lastDonated =
+    next.lastDonated === undefined
+      ? user.lastDonated
+      : next.lastDonated === null
+      ? null
+      : new Date(`${next.lastDonated}T00:00:00.000Z`);
+  const gender = next.gender === undefined ? user.gender : next.gender;
+  const dateOfBirth =
+    next.dateOfBirth === undefined
+      ? user.dateOfBirth
+      : next.dateOfBirth === null
+      ? null
+      : new Date(`${next.dateOfBirth}T00:00:00.000Z`);
   const profileImage = next.profileImage === undefined ? user.profileImage : next.profileImage;
   const canDonate = next.canDonate ?? user.canDonate;
   const lat = next.lat ?? user.lat;
@@ -297,6 +314,22 @@ authRouter.patch("/me", requireAuth, async (req: AuthedRequest, res) => {
     }
 
     console.error(err);
+    return res.status(500).json({ ok: false, message: "Server error" });
+  }
+});
+
+authRouter.delete("/me", requireAuth, async (req: AuthedRequest, res) => {
+  const user = req.authUser!;
+
+  try {
+    await prisma.$executeRaw`
+      DELETE FROM "donors"
+      WHERE "id" = ${user.id}
+    `;
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
     return res.status(500).json({ ok: false, message: "Server error" });
   }
 });

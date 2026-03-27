@@ -17,7 +17,7 @@ export type AuthUser = {
   phone: string;
   bloodGroup: string;
   area: string;
-  lastDonated: Date;
+  lastDonated: Date | null;
   gender: string | null;
   dateOfBirth: Date | null;
   profileImage: string | null;

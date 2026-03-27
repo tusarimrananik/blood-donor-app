@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Platform,
@@ -32,13 +32,13 @@ function formatDateLabel(value: string) {
   return date.toLocaleDateString();
 }
 
-function statCompletion(fields: Array<string | null | undefined>) {
+function statCompletion(fields: (string | null | undefined)[]) {
   const filled = fields.filter(Boolean).length;
   return Math.round((filled / fields.length) * 100);
 }
 
 export default function ProfileScreen() {
-  const { user, updateProfile, logout } = useAuth();
+  const { user, updateProfile, deleteAccount, logout } = useAuth();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -54,24 +54,24 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  const hydrateFromUser = () => {
+  const hydrateFromUser = useCallback(() => {
     if (!user) return;
     setName(user.name);
     setPhone(user.phone);
     setBloodGroup(user.bloodGroup as (typeof BLOOD_GROUPS)[number]);
     setArea(user.area);
-    setLastDonated(user.lastDonated.slice(0, 10));
+    setLastDonated(user.lastDonated ? user.lastDonated.slice(0, 10) : "");
     setGender((user.gender as (typeof GENDERS)[number]) || "");
     setDateOfBirth(user.dateOfBirth ? user.dateOfBirth.slice(0, 10) : "");
     setProfileImage(user.profileImage);
     setCanDonate(user.canDonate);
     setLat(user.lat);
     setLon(user.lon);
-  };
+  }, [user]);
 
   useEffect(() => {
     hydrateFromUser();
-  }, [user]);
+  }, [hydrateFromUser]);
 
   const profileCompletion = useMemo(
     () => statCompletion([name, phone, bloodGroup, area, lastDonated, gender, dateOfBirth, profileImage]),
@@ -123,9 +123,9 @@ export default function ProfileScreen() {
         phone: phone.trim(),
         bloodGroup,
         area: area.trim(),
-        lastDonated,
-        gender,
-        dateOfBirth,
+        lastDonated: lastDonated || null,
+        gender: gender || null,
+        dateOfBirth: dateOfBirth || null,
         profileImage,
         canDonate,
         lat: lat ?? 0,
@@ -144,6 +144,28 @@ export default function ProfileScreen() {
   const cancelEditing = () => {
     hydrateFromUser();
     setIsEditing(false);
+  };
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      "Delete account",
+      "This permanently removes your BloodLink account, saved profile, and device notifications. This cannot be undone.",
+      [
+        { text: "Keep account", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteAccount();
+              Alert.alert("Account deleted", "Your account has been removed.");
+            } catch (error: any) {
+              Alert.alert("Delete failed", error?.message || "Something went wrong.");
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -263,6 +285,11 @@ export default function ProfileScreen() {
             <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
               <Ionicons name="log-out-outline" size={18} color={Colors.light.danger} />
               <Text style={styles.logoutBtnText}>Logout</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.deleteBtn} onPress={confirmDeleteAccount}>
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={styles.deleteBtnText}>Delete account</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -778,6 +805,19 @@ const styles = StyleSheet.create({
   },
   logoutBtnText: {
     color: Colors.light.danger,
+    fontWeight: "800",
+  },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 14,
+    backgroundColor: Colors.light.danger,
+  },
+  deleteBtnText: {
+    color: "#fff",
     fontWeight: "800",
   },
 });

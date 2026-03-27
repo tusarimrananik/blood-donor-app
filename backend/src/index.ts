@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import { authRouter } from "./routes/auth.js";
 import { donorsRouter } from "./routes/donors.js";
+import { notificationsRouter } from "./routes/notifications.js";
 import { requestsRouter } from "./routes/requests.js";
 
 const app = express();
@@ -18,6 +19,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/auth", authRouter);
 app.use("/donors", donorsRouter);
+app.use("/notifications", notificationsRouter);
 app.use("/requests", requestsRouter);
 
 const port = Number(process.env.PORT || 4000);

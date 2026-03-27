@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { AuthedRequest } from "../auth.js";
 import { attachAuthUser, requireAuth } from "../auth.js";
+import { notifyUser } from "../notifications.js";
 import { prisma } from "../prisma.js";
 
 export const requestsRouter = Router();
@@ -14,6 +15,18 @@ const createRequestSchema = z.object({
   urgency: z.enum(["STANDARD", "PRIORITY", "URGENT"]).default("STANDARD"),
   targetDonorId: z.string().uuid().optional(),
 });
+
+type RequestVolunteerRow = {
+  id: string;
+  requestId: string;
+  donorId: string;
+  donorName: string;
+  donorPhone: string;
+  donorArea: string;
+  donorBloodGroup: string;
+  donorImage: string | null;
+  createdAt: Date;
+};
 
 function clampInt(value: unknown, def: number, min: number, max: number) {
   const n =
@@ -118,7 +131,7 @@ requestsRouter.get("/", async (req: AuthedRequest, res) => {
     return res.json({
       ok: true,
       total,
-      items: items.map((item) => ({
+      items: items.map((item: typeof items[number]) => ({
         ...item,
         status: effectiveStatus(item.status, item.donorId),
         responseCount: Number(item.responseCount ?? 0n),
@@ -149,6 +162,7 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
         createdAt: Date;
         responseCount: bigint;
         targetDonorName: string | null;
+        volunteers: RequestVolunteerRow[];
       }>
     >`
       SELECT
@@ -170,6 +184,31 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
       GROUP BY r."id", target."name"
       ORDER BY r."createdAt" DESC
     `;
+
+    const volunteerRows = await prisma.$queryRaw<RequestVolunteerRow[]>`
+      SELECT
+        rr."id",
+        rr."requestId",
+        rr."donorId",
+        donor."name" AS "donorName",
+        donor."phone" AS "donorPhone",
+        donor."area" AS "donorArea",
+        donor."bloodGroup" AS "donorBloodGroup",
+        donor."profileImage" AS "donorImage",
+        rr."createdAt"
+      FROM "request_responses" rr
+      INNER JOIN "requests" r ON r."id" = rr."requestId"
+      INNER JOIN "donors" donor ON donor."id" = rr."donorId"
+      WHERE r."createdById" = ${user.id}
+      ORDER BY rr."createdAt" DESC
+    `;
+
+    const volunteersByRequest = new Map<string, RequestVolunteerRow[]>();
+    for (const row of volunteerRows) {
+      const current = volunteersByRequest.get(row.requestId) ?? [];
+      current.push(row);
+      volunteersByRequest.set(row.requestId, current);
+    }
 
     const requestsForMe = await prisma.$queryRaw<
       Array<{
@@ -240,16 +279,17 @@ requestsRouter.get("/activity", requireAuth, async (req: AuthedRequest, res) => 
 
     return res.json({
       ok: true,
-      myRequests: myRequests.map((item) => ({
+      myRequests: myRequests.map((item: typeof myRequests[number]) => ({
         ...item,
         status: effectiveStatus(item.status, item.donorId),
         responseCount: Number(item.responseCount ?? 0n),
+        volunteers: volunteersByRequest.get(item.id) ?? [],
       })),
-      requestsForMe: requestsForMe.map((item) => ({
+      requestsForMe: requestsForMe.map((item: typeof requestsForMe[number]) => ({
         ...item,
         status: effectiveStatus(item.status, item.donorId),
       })),
-      myResponses: myResponses.map((item) => ({
+      myResponses: myResponses.map((item: typeof myResponses[number]) => ({
         ...item,
         status: effectiveStatus(item.status, item.donorId),
       })),
@@ -319,6 +359,18 @@ requestsRouter.post("/", requireAuth, async (req: AuthedRequest, res) => {
       RETURNING "id"
     `;
 
+    if (data.targetDonorId) {
+      await notifyUser({
+        recipientId: data.targetDonorId,
+        actorId: user.id,
+        requestId: rows[0]!.id,
+        type: "REQUEST_RECEIVED",
+        title: "New direct blood request",
+        body: `${user.name} requested ${data.bloodGroup} blood in ${data.area}.`,
+        data: { requestId: rows[0]!.id, type: "REQUEST_RECEIVED" },
+      });
+    }
+
     return res.status(201).json({ ok: true, requestId: rows[0]!.id });
   } catch (err) {
     console.error(err);
@@ -344,10 +396,11 @@ requestsRouter.post("/:id/respond", requireAuth, async (req: AuthedRequest, res)
         id: string;
         bloodGroup: string;
         createdById: string | null;
+        requesterName: string;
         status: string;
       }>
     >`
-      SELECT "id", "bloodGroup", "createdById", "status"
+      SELECT "id", "bloodGroup", "createdById", "requesterName", "status"
       FROM "requests"
       WHERE "id" = ${requestId}
       LIMIT 1
@@ -386,6 +439,16 @@ requestsRouter.post("/:id/respond", requireAuth, async (req: AuthedRequest, res)
       ON CONFLICT ("requestId", "donorId") DO NOTHING
     `;
 
+    await notifyUser({
+      recipientId: request.createdById,
+      actorId: user.id,
+      requestId,
+      type: "REQUEST_RESPONSE",
+      title: "A donor responded",
+      body: `${user.name} volunteered for your ${request.bloodGroup} request.`,
+      data: { requestId, type: "REQUEST_RESPONSE" },
+    });
+
     return res.status(201).json({ ok: true, message: "You volunteered for this request" });
   } catch (err) {
     console.error(err);
@@ -407,10 +470,11 @@ requestsRouter.post("/:id/accept", requireAuth, async (req: AuthedRequest, res) 
         id: string;
         targetDonorId: string | null;
         donorId: string | null;
+        createdById: string | null;
         status: string;
       }>
     >`
-      SELECT "id", "targetDonorId", "donorId", "status"
+      SELECT "id", "targetDonorId", "donorId", "createdById", "status"
       FROM "requests"
       WHERE "id" = ${requestId}
       LIMIT 1
@@ -437,6 +501,16 @@ requestsRouter.post("/:id/accept", requireAuth, async (req: AuthedRequest, res) 
       WHERE "id" = ${requestId}
     `;
 
+    await notifyUser({
+      recipientId: request.createdById,
+      actorId: user.id,
+      requestId,
+      type: "REQUEST_ACCEPTED",
+      title: "Direct request accepted",
+      body: `${user.name} accepted your direct blood request.`,
+      data: { requestId, type: "REQUEST_ACCEPTED" },
+    });
+
     return res.json({ ok: true, message: "Request accepted" });
   } catch (err) {
     console.error(err);
@@ -460,9 +534,10 @@ requestsRouter.post("/:id/cancel", requireAuth, async (req: AuthedRequest, res) 
         targetDonorId: string | null;
         donorId: string | null;
         status: string;
+        requesterName: string;
       }>
     >`
-      SELECT "id", "createdById", "targetDonorId", "donorId", "status"
+      SELECT "id", "createdById", "targetDonorId", "donorId", "status", "requesterName"
       FROM "requests"
       WHERE "id" = ${requestId}
       LIMIT 1
@@ -489,6 +564,28 @@ requestsRouter.post("/:id/cancel", requireAuth, async (req: AuthedRequest, res) 
       WHERE "id" = ${requestId}
     `;
 
+    if (request.targetDonorId === user.id && request.createdById && request.createdById !== user.id) {
+      await notifyUser({
+        recipientId: request.createdById,
+        actorId: user.id,
+        requestId,
+        type: "REQUEST_DECLINED",
+        title: "Direct request declined",
+        body: `${user.name} declined your direct blood request.`,
+        data: { requestId, type: "REQUEST_DECLINED" },
+      });
+    } else if (request.createdById === user.id && request.donorId) {
+      await notifyUser({
+        recipientId: request.donorId,
+        actorId: user.id,
+        requestId,
+        type: "REQUEST_CANCELLED",
+        title: "Request cancelled",
+        body: `${user.name} cancelled the blood request.`,
+        data: { requestId, type: "REQUEST_CANCELLED" },
+      });
+    }
+
     return res.json({ ok: true, message: "Request cancelled" });
   } catch (err) {
     console.error(err);
@@ -496,12 +593,13 @@ requestsRouter.post("/:id/cancel", requireAuth, async (req: AuthedRequest, res) 
   }
 });
 
-requestsRouter.post("/:id/complete", requireAuth, async (req: AuthedRequest, res) => {
+requestsRouter.post("/:id/responders/:donorId/accept", requireAuth, async (req: AuthedRequest, res) => {
   const requestId = String(req.params.id || "").trim();
+  const donorId = String(req.params.donorId || "").trim();
   const user = req.authUser!;
 
-  if (!requestId) {
-    return res.status(400).json({ ok: false, message: "Missing request id" });
+  if (!requestId || !donorId) {
+    return res.status(400).json({ ok: false, message: "Missing identifiers" });
   }
 
   try {
@@ -525,6 +623,134 @@ requestsRouter.post("/:id/complete", requireAuth, async (req: AuthedRequest, res
     }
 
     if (request.createdById !== user.id) {
+      return res.status(403).json({ ok: false, message: "Only the requester can accept a donor response" });
+    }
+
+    if (effectiveStatus(request.status, request.donorId) !== "OPEN") {
+      return res.status(400).json({ ok: false, message: "This request is no longer open" });
+    }
+
+    const responseRows = await prisma.$queryRaw<Array<{ donorId: string }>>`
+      SELECT "donorId"
+      FROM "request_responses"
+      WHERE "requestId" = ${requestId}
+        AND "donorId" = ${donorId}
+      LIMIT 1
+    `;
+
+    if (!responseRows[0]) {
+      return res.status(404).json({ ok: false, message: "Volunteer response not found" });
+    }
+
+    await prisma.$executeRaw`
+      UPDATE "requests"
+      SET
+        "donorId" = ${donorId},
+        "status" = 'ASSIGNED'
+      WHERE "id" = ${requestId}
+    `;
+
+    await notifyUser({
+      recipientId: donorId,
+      actorId: user.id,
+      requestId,
+      type: "VOLUNTEER_ACCEPTED",
+      title: "You were chosen as donor",
+      body: `${user.name} accepted your response to their blood request.`,
+      data: { requestId, type: "VOLUNTEER_ACCEPTED" },
+    });
+
+    return res.json({ ok: true, message: "Volunteer accepted" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ ok: false, message: "Server error" });
+  }
+});
+
+requestsRouter.post("/:id/responders/:donorId/decline", requireAuth, async (req: AuthedRequest, res) => {
+  const requestId = String(req.params.id || "").trim();
+  const donorId = String(req.params.donorId || "").trim();
+  const user = req.authUser!;
+
+  if (!requestId || !donorId) {
+    return res.status(400).json({ ok: false, message: "Missing identifiers" });
+  }
+
+  try {
+    const requestRows = await prisma.$queryRaw<Array<{ createdById: string | null }>>`
+      SELECT "createdById"
+      FROM "requests"
+      WHERE "id" = ${requestId}
+      LIMIT 1
+    `;
+
+    const request = requestRows[0];
+    if (!request) {
+      return res.status(404).json({ ok: false, message: "Request not found" });
+    }
+
+    if (request.createdById !== user.id) {
+      return res.status(403).json({ ok: false, message: "Only the requester can decline a donor response" });
+    }
+
+    const deleted = await prisma.$executeRaw`
+      DELETE FROM "request_responses"
+      WHERE "requestId" = ${requestId}
+        AND "donorId" = ${donorId}
+    `;
+
+    if (!deleted) {
+      return res.status(404).json({ ok: false, message: "Volunteer response not found" });
+    }
+
+    await notifyUser({
+      recipientId: donorId,
+      actorId: user.id,
+      requestId,
+      type: "VOLUNTEER_DECLINED",
+      title: "Response not selected",
+      body: `${user.name} declined your response to their blood request.`,
+      data: { requestId, type: "VOLUNTEER_DECLINED" },
+    });
+
+    return res.json({ ok: true, message: "Volunteer declined" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ ok: false, message: "Server error" });
+  }
+});
+
+requestsRouter.post("/:id/complete", requireAuth, async (req: AuthedRequest, res) => {
+  const requestId = String(req.params.id || "").trim();
+  const user = req.authUser!;
+
+  if (!requestId) {
+    return res.status(400).json({ ok: false, message: "Missing request id" });
+  }
+
+  try {
+    const requestRows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        createdById: string | null;
+        donorId: string | null;
+        donorName: string | null;
+        status: string;
+      }>
+    >`
+      SELECT r."id", r."createdById", r."donorId", donor."name" AS "donorName", r."status"
+      FROM "requests"
+      LEFT JOIN "donors" donor ON donor."id" = r."donorId"
+      WHERE "id" = ${requestId}
+      LIMIT 1
+    `;
+
+    const request = requestRows[0];
+    if (!request) {
+      return res.status(404).json({ ok: false, message: "Request not found" });
+    }
+
+    if (request.createdById !== user.id) {
       return res.status(403).json({ ok: false, message: "Only the requester can complete this request" });
     }
 
@@ -537,6 +763,16 @@ requestsRouter.post("/:id/complete", requireAuth, async (req: AuthedRequest, res
       SET "status" = 'COMPLETED'
       WHERE "id" = ${requestId}
     `;
+
+    await notifyUser({
+      recipientId: request.donorId,
+      actorId: user.id,
+      requestId,
+      type: "REQUEST_COMPLETED",
+      title: "Request completed",
+      body: `${user.name} marked the blood request as completed.`,
+      data: { requestId, type: "REQUEST_COMPLETED" },
+    });
 
     return res.json({ ok: true, message: "Request completed" });
   } catch (err) {
@@ -563,6 +799,23 @@ requestsRouter.post("/:id/withdraw", requireAuth, async (req: AuthedRequest, res
     if (!deleted) {
       return res.status(404).json({ ok: false, message: "You have not responded to this request" });
     }
+
+    const requestRows = await prisma.$queryRaw<Array<{ createdById: string | null }>>`
+      SELECT "createdById"
+      FROM "requests"
+      WHERE "id" = ${requestId}
+      LIMIT 1
+    `;
+
+    await notifyUser({
+      recipientId: requestRows[0]?.createdById ?? null,
+      actorId: user.id,
+      requestId,
+      type: "VOLUNTEER_WITHDREW",
+      title: "A donor withdrew",
+      body: `${user.name} withdrew from your blood request.`,
+      data: { requestId, type: "VOLUNTEER_WITHDREW" },
+    });
 
     return res.json({ ok: true, message: "Response cancelled" });
   } catch (err) {

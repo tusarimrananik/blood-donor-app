@@ -23,6 +23,7 @@ model Request {
   createdById    String?
   createdBy      Donor?   @relation("CreatedRequests", fields: [createdById], references: [id], onDelete: SetNull)
   responses      RequestResponse[]
+  notifications  Notification[]
   createdAt      DateTime @default(now())
 
   @@index([donorId])
@@ -34,13 +35,13 @@ model Request {
 }
 
 model Donor {
-  id          String   @id @default(uuid())
-  name        String
-  phone       String   @unique
-  email       String   @unique
-  bloodGroup  String
-  area        String
-  lastDonated DateTime
+  id           String   @id @default(uuid())
+  name         String
+  phone        String   @unique
+  email        String   @unique
+  bloodGroup   String
+  area         String
+  lastDonated  DateTime?
   passwordHash String?
   gender       String?
   dateOfBirth  DateTime?
@@ -49,10 +50,13 @@ model Donor {
 
   // PostGIS Point (lon, lat), SRID 4326
   location Unsupported("geometry(Point, 4326)")
-  requestsMatched Request[] @relation("MatchedDonorRequests")
-  requestsCreated Request[] @relation("CreatedRequests")
-  requestsTargeted Request[] @relation("TargetedRequests")
+  requestsMatched  Request[]         @relation("MatchedDonorRequests")
+  requestsCreated  Request[]         @relation("CreatedRequests")
+  requestsTargeted Request[]         @relation("TargetedRequests")
   requestResponses RequestResponse[]
+  receivedNotifications Notification[] @relation("RecipientNotifications")
+  sentNotifications     Notification[] @relation("ActorNotifications")
+  pushTokens            PushToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -72,4 +76,38 @@ model RequestResponse {
   @@index([requestId])
   @@index([donorId])
   @@map("request_responses")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  recipientId String
+  actorId     String?
+  requestId   String?
+  type        String
+  title       String
+  body        String
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+  recipient   Donor    @relation("RecipientNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor       Donor?   @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: SetNull)
+  request     Request? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, createdAt])
+  @@index([recipientId, readAt])
+  @@index([requestId])
+  @@map("notifications")
+}
+
+model PushToken {
+  id         String   @id @default(uuid())
+  donorId    String
+  token      String   @unique
+  platform   String
+  disabledAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  donor      Donor    @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@index([donorId, disabledAt])
+  @@map("push_tokens")
 }

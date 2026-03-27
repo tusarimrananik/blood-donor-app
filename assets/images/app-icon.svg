@@ -1,30 +1,36 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="164" y1="112" x2="864" y2="924" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF3F0"/>
-      <stop offset="1" stop-color="#F6DDE4"/>
+    <linearGradient id="bg" x1="144" y1="96" x2="900" y2="932" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF4EF"/>
+      <stop offset="1" stop-color="#F7DCE3"/>
     </linearGradient>
-    <linearGradient id="panel" x1="250" y1="174" x2="810" y2="864" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#B3294A"/>
-      <stop offset="1" stop-color="#7A1734"/>
+    <linearGradient id="drop" x1="312" y1="214" x2="684" y2="814" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C52B55"/>
+      <stop offset="1" stop-color="#7F1737"/>
     </linearGradient>
-    <filter id="shadow" x="140" y="120" width="744" height="808" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+    <linearGradient id="heart" x1="374" y1="374" x2="682" y2="648" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#FFE7EE"/>
+    </linearGradient>
+    <filter id="shadow" x="220" y="178" width="584" height="706" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feFlood flood-opacity="0" result="BackgroundImageFix"/>
       <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
-      <feOffset dy="24"/>
-      <feGaussianBlur stdDeviation="34"/>
-      <feColorMatrix type="matrix" values="0 0 0 0 0.309804 0 0 0 0 0.0470588 0 0 0 0 0.133333 0 0 0 0.18 0"/>
-      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_2"/>
-      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_2" result="shape"/>
+      <feOffset dy="26"/>
+      <feGaussianBlur stdDeviation="30"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.341176 0 0 0 0 0.054902 0 0 0 0 0.152941 0 0 0 0.2 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
     </filter>
   </defs>
-  <rect width="1024" height="1024" rx="240" fill="url(#bg)"/>
-  <circle cx="798" cy="226" r="94" fill="#FFFFFF" fill-opacity="0.35"/>
-  <circle cx="232" cy="808" r="118" fill="#FFFFFF" fill-opacity="0.24"/>
+  <rect width="1024" height="1024" rx="248" fill="url(#bg)"/>
+  <circle cx="802" cy="210" r="92" fill="#FFFFFF" fill-opacity="0.36"/>
+  <circle cx="216" cy="826" r="118" fill="#FFFFFF" fill-opacity="0.2"/>
+  <path d="M176 356C176 316.235 208.235 284 248 284H380C419.765 284 452 316.235 452 356V388C452 427.765 419.765 460 380 460H248C208.235 460 176 427.765 176 388V356Z" fill="#FFFFFF" fill-opacity="0.42"/>
+  <path d="M572 712C572 672.235 604.235 640 644 640H776C815.765 640 848 672.235 848 712V744C848 783.765 815.765 816 776 816H644C604.235 816 572 783.765 572 744V712Z" fill="#FFFFFF" fill-opacity="0.28"/>
   <g filter="url(#shadow)">
-    <path d="M512 224C427.531 224 352 292.401 352 388.25C352 557.402 505.252 685.517 512 800C518.748 685.517 672 557.402 672 388.25C672 292.401 596.469 224 512 224Z" fill="url(#panel)"/>
+    <path d="M512 222C424.202 222 346 293.852 346 393.851C346 568.408 503.421 693.63 512 806C520.579 693.63 678 568.408 678 393.851C678 293.852 599.798 222 512 222Z" fill="url(#drop)"/>
   </g>
-  <path d="M428 446C428 391.324 472.324 347 527 347C557.143 347 584.14 360.485 602.289 381.748C620.437 360.485 647.434 347 677.578 347C732.254 347 776.578 391.324 776.578 446C776.578 519.701 704.861 559.503 634.651 619.141C624.804 627.507 610.663 627.507 600.816 619.141C530.607 559.503 428 519.701 428 446Z" fill="white" fill-opacity="0.96" transform="translate(-90 36) scale(0.78)"/>
-  <rect x="474" y="430" width="76" height="214" rx="26" fill="#9F1E40"/>
-  <rect x="405" y="499" width="214" height="76" rx="26" fill="#9F1E40"/>
+  <path d="M442 410C442 379.624 466.624 355 497 355C516.212 355 533.112 364.845 543 380.056C552.888 364.845 569.788 355 589 355C619.376 355 644 379.624 644 410C644 468.721 587.116 500.832 551.712 535.758C546.157 541.239 539.843 541.239 534.288 535.758C498.884 500.832 442 468.721 442 410Z" fill="url(#heart)"/>
+  <rect x="484" y="438" width="56" height="160" rx="24" fill="#B52149"/>
+  <rect x="432" y="490" width="160" height="56" rx="24" fill="#B52149"/>
 </svg>

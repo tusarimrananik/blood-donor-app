@@ -27,7 +27,7 @@ type ApiDonor = {
   profileImage: string | null;
   bloodGroup: string;
   area: string;
-  lastDonated: string;
+  lastDonated: string | null;
   lat: number;
   lon: number;
   createdAt: string;
@@ -150,6 +150,8 @@ export default function DonorDetailsScreen() {
         : { text: `Eligible in ${dl} days (${nd})`, eligible: false };
     }
 
+    if (!donor.lastDonated) return { text: "Eligible now (first-time donor)", eligible: true };
+
     const lastStr = normalizeLastDonated(donor.lastDonated);
     const last = safeParseDateYYYYMMDD(lastStr);
     if (!last) return { text: "Not eligible (invalid last donation date)", eligible: false };
@@ -170,7 +172,7 @@ export default function DonorDetailsScreen() {
 
   const lastDonationText = useMemo(() => {
     if (!donor) return "-";
-    return donor.lastDonated ? normalizeLastDonated(donor.lastDonated) : "Not provided";
+    return donor.lastDonated ? normalizeLastDonated(donor.lastDonated) : "First-time donor";
   }, [donor]);
 
   const openUrlOrAlert = async (url: string, failTitle: string, failMsg: string) => {
@@ -243,7 +245,7 @@ export default function DonorDetailsScreen() {
         {loading ? (
           <View style={styles.card}>
             <Text style={styles.title}>Loading...</Text>
-            <Text style={styles.text}>Fetching donor details from backend.</Text>
+            <Text style={styles.text}>Fetching donor details.</Text>
           </View>
         ) : errMsg ? (
           <View style={styles.card}>
@@ -307,7 +309,7 @@ export default function DonorDetailsScreen() {
               {showRequestForm ? (
                 <View style={styles.formCard}>
                   <Text style={styles.formTitle}>Direct Request</Text>
-                  <Text style={styles.formHint}>This request will appear in your activity and in this donor's incoming requests.</Text>
+                  <Text style={styles.formHint}>This request will appear in your activity and in this donor&apos;s incoming requests.</Text>
 
                   <Text style={styles.label}>Blood Group Needed</Text>
                   <View style={styles.chipsRow}>

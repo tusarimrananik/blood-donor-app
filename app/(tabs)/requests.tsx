@@ -98,6 +98,7 @@ export default function RequestsScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [showComposer, setShowComposer] = useState(false);
   const [bloodGroup, setBloodGroup] = useState<(typeof BLOOD_GROUPS)[number] | "">("");
   const [urgency, setUrgency] = useState<(typeof URGENCY_LEVELS)[number]>("STANDARD");
   const [area, setArea] = useState("");
@@ -185,6 +186,7 @@ export default function RequestsScreen() {
       setHospital("");
       setMessage("");
       setUrgency("STANDARD");
+      setShowComposer(false);
       await loadRequests();
       Alert.alert("Request posted", "Your blood request is now visible to all users.");
     } catch (e: any) {
@@ -242,74 +244,88 @@ export default function RequestsScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Create New Request</Text>
-        <Text style={styles.helper}>Your name and phone are taken automatically from your account.</Text>
-
-        <Text style={styles.label}>Blood Group Needed</Text>
-        <View style={styles.chipsRow}>
-          {BLOOD_GROUPS.map((item) => {
-            const active = bloodGroup === item;
-            return (
-              <TouchableOpacity
-                key={item}
-                style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setBloodGroup(item)}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sectionTitle}>Create New Request</Text>
+            <Text style={styles.helper}>Your name and phone are taken automatically from your account.</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.refreshBtn}
+            onPress={() => setShowComposer((value) => !value)}
+          >
+            <Text style={styles.refreshBtnText}>{showComposer ? "Close" : "New Request"}</Text>
+          </TouchableOpacity>
         </View>
 
-        <Text style={styles.label}>Urgency</Text>
-        <View style={styles.chipsRow}>
-          {URGENCY_LEVELS.map((item) => {
-            const active = urgency === item;
-            return (
-              <TouchableOpacity
-                key={item}
-                style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setUrgency(item)}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                  {item === "STANDARD" ? "Standard" : item === "PRIORITY" ? "Priority" : "Urgent"}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {showComposer ? (
+          <>
+            <Text style={styles.label}>Blood Group Needed</Text>
+            <View style={styles.chipsRow}>
+              {BLOOD_GROUPS.map((item) => {
+                const active = bloodGroup === item;
+                return (
+                  <TouchableOpacity
+                    key={item}
+                    style={[styles.chip, active && styles.chipActive]}
+                    onPress={() => setBloodGroup(item)}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-        <Text style={styles.label}>Area</Text>
-        <TextInput
-          value={area}
-          onChangeText={setArea}
-          style={styles.input}
-          placeholder="Area for the request"
-          placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
-        />
+            <Text style={styles.label}>Urgency</Text>
+            <View style={styles.chipsRow}>
+              {URGENCY_LEVELS.map((item) => {
+                const active = urgency === item;
+                return (
+                  <TouchableOpacity
+                    key={item}
+                    style={[styles.chip, active && styles.chipActive]}
+                    onPress={() => setUrgency(item)}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                      {item === "STANDARD" ? "Standard" : item === "PRIORITY" ? "Priority" : "Urgent"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-        <Text style={styles.label}>Hospital</Text>
-        <TextInput
-          value={hospital}
-          onChangeText={setHospital}
-          style={styles.input}
-          placeholder="Hospital name (optional)"
-          placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
-        />
+            <Text style={styles.label}>Area</Text>
+            <TextInput
+              value={area}
+              onChangeText={setArea}
+              style={styles.input}
+              placeholder="Area for the request"
+              placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+            />
 
-        <Text style={styles.label}>Message</Text>
-        <TextInput
-          value={message}
-          onChangeText={setMessage}
-          style={[styles.input, styles.textArea]}
-          placeholder="Explain the urgency and details"
-          placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
-          multiline
-        />
+            <Text style={styles.label}>Hospital</Text>
+            <TextInput
+              value={hospital}
+              onChangeText={setHospital}
+              style={styles.input}
+              placeholder="Hospital name (optional)"
+              placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+            />
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={createRequest}>
-          <Text style={styles.primaryBtnText}>{submitting ? "Posting..." : "Post request"}</Text>
-        </TouchableOpacity>
+            <Text style={styles.label}>Message</Text>
+            <TextInput
+              value={message}
+              onChangeText={setMessage}
+              style={[styles.input, styles.textArea]}
+              placeholder="Explain the urgency and details"
+              placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+              multiline
+            />
+
+            <TouchableOpacity style={styles.primaryBtn} onPress={createRequest}>
+              <Text style={styles.primaryBtnText}>{submitting ? "Posting..." : "Post request"}</Text>
+            </TouchableOpacity>
+          </>
+        ) : null}
       </View>
 
       <View style={styles.card}>
@@ -530,6 +546,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 11,
     backgroundColor: "#fafafa",
+    color: "#111827",
   },
   textArea: {
     minHeight: 100,

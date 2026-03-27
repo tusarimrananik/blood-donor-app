@@ -1,5 +1,5 @@
 {
-  "name": "blood-donor-app",
+  "name": "bloodlink",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
@@ -28,6 +28,7 @@
     "expo-linking": "~8.0.11",
     "expo-location": "~19.0.8",
     "expo-navigation-bar": "~5.0.10",
+    "expo-notifications": "~0.32.12",
     "expo-router": "~6.0.21",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",

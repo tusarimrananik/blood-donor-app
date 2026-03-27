@@ -61,7 +61,7 @@ donorsRouter.get("/:id", async (req, res) => {
         profileImage: string | null;
         bloodGroup: string;
         area: string;
-        lastDonated: Date;
+        lastDonated: Date | null;
         lat: number;
         lon: number;
         createdAt: Date;
@@ -128,7 +128,7 @@ donorsRouter.get("/", async (req, res) => {
         WHERE
           "canDonate" = true
           AND
-          (${eligibleOnly} = false OR "lastDonated" <= NOW() - INTERVAL '90 days')
+          (${eligibleOnly} = false OR "lastDonated" IS NULL OR "lastDonated" <= NOW() - INTERVAL '90 days')
           AND (${hasBloodFilter} = false OR "bloodGroup" = ${bloodGroup})
       `;
       const total = Number(totalRows[0]?.total ?? 0n);
@@ -142,7 +142,7 @@ donorsRouter.get("/", async (req, res) => {
           profileImage: string | null;
           bloodGroup: string;
           area: string;
-          lastDonated: Date;
+          lastDonated: Date | null;
           lat: number;
           lon: number;
           createdAt: Date;
@@ -166,7 +166,7 @@ donorsRouter.get("/", async (req, res) => {
         WHERE
           "canDonate" = true
           AND
-          (${eligibleOnly} = false OR "lastDonated" <= NOW() - INTERVAL '90 days')
+          (${eligibleOnly} = false OR "lastDonated" IS NULL OR "lastDonated" <= NOW() - INTERVAL '90 days')
           AND (${hasBloodFilter} = false OR "bloodGroup" = ${bloodGroup})
         ORDER BY "createdAt" DESC
         LIMIT ${limit}
@@ -190,7 +190,7 @@ donorsRouter.get("/", async (req, res) => {
       WHERE
         "canDonate" = true
         AND
-        (${eligibleOnly} = false OR "lastDonated" <= NOW() - INTERVAL '90 days')
+        (${eligibleOnly} = false OR "lastDonated" IS NULL OR "lastDonated" <= NOW() - INTERVAL '90 days')
         AND (${hasBloodFilter} = false OR "bloodGroup" = ${bloodGroup})
         AND ST_DistanceSphere(
           "location",
@@ -208,7 +208,7 @@ donorsRouter.get("/", async (req, res) => {
           profileImage: string | null;
           bloodGroup: string;
           area: string;
-        lastDonated: Date;
+        lastDonated: Date | null;
         lat: number;
         lon: number;
         distanceKm: number;
@@ -239,7 +239,7 @@ donorsRouter.get("/", async (req, res) => {
       WHERE
         "canDonate" = true
         AND
-        (${eligibleOnly} = false OR "lastDonated" <= NOW() - INTERVAL '90 days')
+        (${eligibleOnly} = false OR "lastDonated" IS NULL OR "lastDonated" <= NOW() - INTERVAL '90 days')
         AND (${hasBloodFilter} = false OR "bloodGroup" = ${bloodGroup})
         AND ST_DistanceSphere(
           "location",

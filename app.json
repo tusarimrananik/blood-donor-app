@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "blood-donor-app",
-    "slug": "blood-donor-app",
+    "name": "BloodLink",
+    "slug": "bloodlink",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -44,6 +44,14 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow BloodLink to access your photos so you can upload a profile picture."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#8B1E3F",
+          "defaultChannel": "bloodlink-alerts"
         }
       ],
       "@react-native-community/datetimepicker"
