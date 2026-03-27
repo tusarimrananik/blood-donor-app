@@ -55,6 +55,7 @@ export default function AuthScreen() {
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [submitting, setSubmitting] = useState(false);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [registerAttempted, setRegisterAttempted] = useState(false);
 
   const [name, setName] = useState("");
@@ -87,9 +88,9 @@ export default function AuthScreen() {
     if (password.length < 6) return "Password must be at least 6 characters.";
     if (!bloodGroup) return "Select a blood group.";
     if (trimmedArea.length < 2) return "Area must be at least 2 characters.";
-    if (dateOfBirth && !birthDate) return "Date of birth must use YYYY-MM-DD.";
-    if (birthDate && birthDate.getTime() > now.getTime()) return "Date of birth cannot be in the future.";
-    if (birthDate && yearsOld(birthDate, now) < 18) return "You must be at least 18 years old to register.";
+    if (!birthDate) return "Date of birth is required and must use YYYY-MM-DD.";
+    if (birthDate.getTime() > now.getTime()) return "Date of birth cannot be in the future.";
+    if (yearsOld(birthDate, now) < 18) return "You must be at least 18 years old to register.";
     if (lastDonated && !donationDate) return "Last donated must use YYYY-MM-DD.";
     if (donationDate && donationDate.getTime() > now.getTime()) return "Last donated date cannot be in the future.";
     if (lat == null || lon == null) return "Use your current location before registering.";
@@ -97,10 +98,27 @@ export default function AuthScreen() {
   }, [area, bloodGroup, dateOfBirth, email, lastDonated, lat, lon, name, password, phone]);
 
   const readyForRegister = registerValidation === "";
+  const loginValidation = useMemo(() => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail && !password) return "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) return "Use a valid email address to log in.";
+    if (password.length < 6) return "Password must be at least 6 characters.";
+    return "";
+  }, [email, password]);
 
   useEffect(() => {
     setRegisterAttempted(false);
+    setAttemptedSubmit(false);
   }, [mode]);
+
+  const formMessage =
+    mode === "login"
+      ? attemptedSubmit && loginValidation
+        ? loginValidation
+        : "Use the email and password linked to your donor account."
+      : registerAttempted && !readyForRegister && registerValidation
+      ? registerValidation
+      : "Your name, blood group, date of birth, location, and contact details are required. You can fill the rest in later.";
 
   useEffect(() => {
     NavigationBar.setButtonStyleAsync("dark").catch(() => {});
@@ -166,14 +184,12 @@ export default function AuthScreen() {
   const submit = async () => {
     if (submitting) return;
     setSubmitting(true);
+    setAttemptedSubmit(true);
 
     try {
       if (mode === "login") {
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim().toLowerCase())) {
-          throw new Error("Enter a valid email address.");
-        }
-        if (password.length < 6) {
-          throw new Error("Password must be at least 6 characters.");
+        if (loginValidation) {
+          throw new Error(loginValidation);
         }
         await login(email.trim().toLowerCase(), password);
       } else {
@@ -321,7 +337,7 @@ export default function AuthScreen() {
                 <Text style={styles.label}>Date of Birth</Text>
                 <TouchableOpacity style={styles.dateField} onPress={() => setPickerField("dateOfBirth")}>
                   <Text style={dateOfBirth ? styles.dateValue : styles.datePlaceholder}>
-                    {dateOfBirth || "Optional"}
+                    {dateOfBirth || "Required"}
                   </Text>
                 </TouchableOpacity>
 
@@ -382,18 +398,17 @@ export default function AuthScreen() {
               </Text>
             </TouchableOpacity>
 
-            {mode === "register" ? (
-              <Text
-                style={[
-                  styles.helperText,
-                  registerAttempted && !readyForRegister && registerValidation ? styles.errorText : null,
-                ]}
-              >
-                {registerAttempted && !readyForRegister && registerValidation
-                  ? registerValidation
-                  : "Only your core donor details are required now. You can complete the rest later from your profile."}
-              </Text>
-            ) : null}
+            <Text
+              style={[
+                styles.helperText,
+                ((mode === "login" && attemptedSubmit && loginValidation) ||
+                  (mode === "register" && registerAttempted && !readyForRegister && registerValidation))
+                  ? styles.errorText
+                  : null,
+              ]}
+            >
+              {formMessage}
+            </Text>
           </View>
 
           {pickerField ? (

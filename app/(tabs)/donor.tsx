@@ -271,7 +271,7 @@ export default function ActivityScreen() {
                       disabled={workingKey === `complete-${item.id}`}
                     >
                       <Text style={styles.acceptBtnText}>
-                        {workingKey === `complete-${item.id}` ? "Saving..." : "Accept"}
+                        {workingKey === `complete-${item.id}` ? "Saving..." : "Mark Completed"}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
