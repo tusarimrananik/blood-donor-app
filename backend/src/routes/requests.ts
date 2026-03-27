@@ -739,7 +739,7 @@ requestsRouter.post("/:id/complete", requireAuth, async (req: AuthedRequest, res
       }>
     >`
       SELECT r."id", r."createdById", r."donorId", donor."name" AS "donorName", r."status"
-      FROM "requests"
+      FROM "requests" r
       LEFT JOIN "donors" donor ON donor."id" = r."donorId"
       WHERE r."id" = ${requestId}
       LIMIT 1
