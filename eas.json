@@ -9,15 +9,15 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://your-api-domain.com"
+        "EXPO_PUBLIC_API_URL": "https://blood-donor-app-j54o.onrender.com/"
       }
     },
     "production": {
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://your-api-domain.com"
+        "EXPO_PUBLIC_API_URL": "https://blood-donor-app-j54o.onrender.com/"
       }
     }
   }
