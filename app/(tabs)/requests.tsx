@@ -18,6 +18,7 @@ import { Colors } from "@/constants/theme";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
 const URGENCY_LEVELS = ["STANDARD", "PRIORITY", "URGENT"] as const;
+const PLACEHOLDER_TEXT_COLOR = "#8b95a7";
 
 type RequestItem = {
   id: string;
@@ -279,10 +280,22 @@ export default function RequestsScreen() {
         </View>
 
         <Text style={styles.label}>Area</Text>
-        <TextInput value={area} onChangeText={setArea} style={styles.input} placeholder="Area for the request" />
+        <TextInput
+          value={area}
+          onChangeText={setArea}
+          style={styles.input}
+          placeholder="Area for the request"
+          placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+        />
 
         <Text style={styles.label}>Hospital</Text>
-        <TextInput value={hospital} onChangeText={setHospital} style={styles.input} placeholder="Hospital name (optional)" />
+        <TextInput
+          value={hospital}
+          onChangeText={setHospital}
+          style={styles.input}
+          placeholder="Hospital name (optional)"
+          placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+        />
 
         <Text style={styles.label}>Message</Text>
         <TextInput
@@ -290,6 +303,7 @@ export default function RequestsScreen() {
           onChangeText={setMessage}
           style={[styles.input, styles.textArea]}
           placeholder="Explain the urgency and details"
+          placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
           multiline
         />
 

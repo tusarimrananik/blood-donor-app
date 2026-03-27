@@ -40,6 +40,12 @@
           }
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow BloodLink to access your photos so you can upload a profile picture."
+        }
+      ],
       "@react-native-community/datetimepicker"
     ],
     "experiments": {

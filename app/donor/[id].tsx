@@ -59,6 +59,7 @@ function safeParseDateYYYYMMDD(s: string) {
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
 const URGENCY_LEVELS = ["STANDARD", "PRIORITY", "URGENT"] as const;
+const PLACEHOLDER_TEXT_COLOR = "#8b95a7";
 
 function firstInitial(name: string) {
   return name.trim().charAt(0).toUpperCase() || "D";
@@ -173,12 +174,11 @@ export default function DonorDetailsScreen() {
   }, [donor]);
 
   const openUrlOrAlert = async (url: string, failTitle: string, failMsg: string) => {
-    const canOpen = await Linking.canOpenURL(url);
-    if (!canOpen) {
+    try {
+      await Linking.openURL(url);
+    } catch {
       Alert.alert(failTitle, failMsg);
-      return;
     }
-    Linking.openURL(url);
   };
 
   const submitDirectRequest = async () => {
@@ -344,7 +344,13 @@ export default function DonorDetailsScreen() {
                   </View>
 
                   <Text style={styles.label}>Area</Text>
-                  <TextInput value={requestArea} onChangeText={setRequestArea} style={styles.input} placeholder="Request area" />
+                  <TextInput
+                    value={requestArea}
+                    onChangeText={setRequestArea}
+                    style={styles.input}
+                    placeholder="Request area"
+                    placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+                  />
 
                   <Text style={styles.label}>Message</Text>
                   <TextInput
@@ -352,6 +358,7 @@ export default function DonorDetailsScreen() {
                     onChangeText={setRequestMessage}
                     style={[styles.input, styles.textArea]}
                     placeholder="Explain why you need blood"
+                    placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
                     multiline
                   />
 

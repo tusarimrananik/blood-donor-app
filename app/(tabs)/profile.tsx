@@ -19,6 +19,7 @@ import { Colors } from "@/constants/theme";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
 const GENDERS = ["Male", "Female", "Other"] as const;
+const PLACEHOLDER_TEXT_COLOR = "#8b95a7";
 
 function firstInitial(name: string) {
   return name.trim().charAt(0).toUpperCase() || "U";
@@ -149,46 +150,63 @@ export default function ProfileScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.hero}>
         <View style={styles.heroTop}>
-          <View style={styles.heroIdentity}>
-            <TouchableOpacity
-              style={styles.avatarWrap}
-              onPress={isEditing ? pickProfileImage : undefined}
-              activeOpacity={isEditing ? 0.85 : 1}
-            >
-              {profileImage ? (
-                <Image source={{ uri: profileImage }} style={styles.avatar} contentFit="cover" />
-              ) : (
-                <Text style={styles.avatarFallback}>{firstInitial(name || user?.name || "")}</Text>
-              )}
-              {isEditing ? (
-                <View style={styles.cameraBadge}>
-                  <Ionicons name="camera-outline" size={14} color="#fff" />
-                </View>
-              ) : null}
-            </TouchableOpacity>
-
-            <View style={styles.heroCopy}>
-              <Text style={styles.title}>{user?.name || "Your Profile"}</Text>
-              <Text style={styles.subtitle}>{user?.email || "Manage your donor account"}</Text>
-              <View style={styles.heroMetaRow}>
-                <View style={styles.heroMetaPill}>
-                  <Ionicons name="water-outline" size={13} color="#fff" />
-                  <Text style={styles.heroMetaText}>{bloodGroup || "Blood group"}</Text>
-                </View>
-                <View style={styles.heroMetaPill}>
-                  <Ionicons name="location-outline" size={13} color="#fff" />
-                  <Text style={styles.heroMetaText}>{area || "Area"}</Text>
-                </View>
-              </View>
-            </View>
+          <View style={styles.heroBadge}>
+            <Ionicons name="shield-checkmark-outline" size={14} color="#fff" />
+            <Text style={styles.heroBadgeText}>Donor profile</Text>
           </View>
 
           {!isEditing ? (
             <TouchableOpacity style={styles.editBtn} onPress={() => setIsEditing(true)}>
-              <Ionicons name="create-outline" size={16} color="#fff" />
-              <Text style={styles.editBtnText}>Edit</Text>
+              <Ionicons name="create-outline" size={16} color={Colors.light.text} />
+              <Text style={styles.editBtnText}>Edit profile</Text>
             </TouchableOpacity>
           ) : null}
+        </View>
+
+        <View style={styles.heroIdentityCard}>
+          <TouchableOpacity
+            style={styles.avatarWrap}
+            onPress={isEditing ? pickProfileImage : undefined}
+            activeOpacity={isEditing ? 0.85 : 1}
+          >
+            {profileImage ? (
+              <Image source={{ uri: profileImage }} style={styles.avatar} contentFit="cover" />
+            ) : (
+              <Text style={styles.avatarFallback}>{firstInitial(name || user?.name || "")}</Text>
+            )}
+            {isEditing ? (
+              <View style={styles.cameraBadge}>
+                <Ionicons name="camera-outline" size={14} color="#fff" />
+              </View>
+            ) : null}
+          </TouchableOpacity>
+
+          <View style={styles.heroCopy}>
+            <Text style={styles.title}>{user?.name || "Your Profile"}</Text>
+            <Text style={styles.subtitle}>{user?.email || "Manage your donor account"}</Text>
+          </View>
+
+          <View style={styles.identityGrid}>
+            <View style={styles.identityPill}>
+              <View style={styles.identityIconWrap}>
+                <Ionicons name="water-outline" size={15} color={Colors.light.tint} />
+              </View>
+              <View style={styles.identityCopy}>
+                <Text style={styles.identityLabel}>Blood Group</Text>
+                <Text style={styles.identityValue}>{bloodGroup || "Not set"}</Text>
+              </View>
+            </View>
+
+            <View style={styles.identityPill}>
+              <View style={styles.identityIconWrap}>
+                <Ionicons name="location-outline" size={15} color={Colors.light.tint} />
+              </View>
+              <View style={styles.identityCopy}>
+                <Text style={styles.identityLabel}>Location</Text>
+                <Text style={styles.identityValue}>{area || "Not set"}</Text>
+              </View>
+            </View>
+          </View>
         </View>
       </View>
 
@@ -271,7 +289,13 @@ export default function ProfileScreen() {
           </View>
 
           <Text style={styles.label}>Full Name</Text>
-          <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Full name" />
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            style={styles.input}
+            placeholder="Full name"
+            placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+          />
 
           <Text style={styles.label}>Phone</Text>
           <TextInput
@@ -279,11 +303,18 @@ export default function ProfileScreen() {
             onChangeText={setPhone}
             style={styles.input}
             placeholder="017xxxxxxxx"
+            placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
             keyboardType={Platform.OS === "ios" ? "number-pad" : "phone-pad"}
           />
 
           <Text style={styles.label}>Area</Text>
-          <TextInput value={area} onChangeText={setArea} style={styles.input} placeholder="Mirpur, Dhaka" />
+          <TextInput
+            value={area}
+            onChangeText={setArea}
+            style={styles.input}
+            placeholder="Mirpur, Dhaka"
+            placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+          />
 
           <View style={styles.inlineInputs}>
             <View style={styles.inlineInputBlock}>
@@ -293,6 +324,7 @@ export default function ProfileScreen() {
                 onChangeText={setDateOfBirth}
                 style={styles.input}
                 placeholder="YYYY-MM-DD"
+                placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
                 maxLength={10}
               />
             </View>
@@ -303,6 +335,7 @@ export default function ProfileScreen() {
                 onChangeText={setLastDonated}
                 style={styles.input}
                 placeholder="YYYY-MM-DD"
+                placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
                 maxLength={10}
               />
             </View>
@@ -399,38 +432,67 @@ const styles = StyleSheet.create({
     backgroundColor: "#102a43",
     borderRadius: 24,
     padding: 20,
-    gap: 14,
+    gap: 16,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 2,
   },
   heroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 12,
   },
-  heroIdentity: {
+  heroBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
-    flex: 1,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  heroBadgeText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  heroIdentityCard: {
+    borderRadius: 22,
+    padding: 16,
+    gap: 14,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
   avatarWrap: {
-    width: 92,
-    height: 92,
+    width: 104,
+    height: 104,
     borderRadius: 999,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "#f8d7df",
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
+    borderWidth: 3,
+    borderColor: "rgba(255,255,255,0.2)",
+    shadowColor: "#020617",
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
   },
   avatar: {
     width: "100%",
     height: "100%",
   },
   avatarFallback: {
-    fontSize: 30,
+    fontSize: 34,
     fontWeight: "900",
-    color: "#374151",
+    color: Colors.light.tint,
   },
   cameraBadge: {
     position: "absolute",
@@ -446,48 +508,64 @@ const styles = StyleSheet.create({
     borderColor: "#102a43",
   },
   heroCopy: {
-    flex: 1,
-    gap: 6,
+    gap: 4,
   },
   title: {
     color: "#fff",
-    fontSize: 24,
-    fontWeight: "800",
+    fontSize: 28,
+    fontWeight: "900",
   },
   subtitle: {
     color: "#d9e2ec",
+    lineHeight: 19,
   },
-  heroMetaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 4,
+  identityGrid: {
+    gap: 10,
   },
-  heroMetaPill: {
+  identityPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
+    gap: 12,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: "rgba(255,255,255,0.14)",
   },
-  heroMetaText: {
-    color: "#fff",
+  identityIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  identityCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  identityLabel: {
+    color: "#d9e2ec",
+    fontSize: 11,
     fontWeight: "700",
-    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  identityValue: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "800",
   },
   editBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "#fff",
   },
   editBtnText: {
-    color: "#fff",
+    color: Colors.light.text,
     fontWeight: "800",
   },
   statsRow: {

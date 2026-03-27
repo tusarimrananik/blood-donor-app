@@ -51,6 +51,7 @@ type ApiGetDonorsResponse = {
 };
 
 const BLOOD_GROUPS = ["All", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
+const PLACEHOLDER_TEXT_COLOR = "#8b95a7";
 
 function toRad(n: number) {
   return (n * Math.PI) / 180;
@@ -297,6 +298,7 @@ export default function FindDonorsScreen() {
             keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
             style={[styles.input, { flex: 1 }]}
             placeholder="5"
+            placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
           />
           <TouchableOpacity
             style={[styles.quickBtn, maxDistanceKmText === "2" && styles.quickBtnActive]}

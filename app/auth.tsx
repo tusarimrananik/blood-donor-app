@@ -22,6 +22,7 @@ import { useAuth } from "@/lib/auth";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"] as const;
 const GENDERS = ["Male", "Female", "Other"] as const;
+const PLACEHOLDER_TEXT_COLOR = "#8b95a7";
 
 function formatDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -253,7 +254,13 @@ export default function AuthScreen() {
                 </TouchableOpacity>
 
                 <Text style={styles.label}>Full Name</Text>
-                <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Your full name" />
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  style={styles.input}
+                  placeholder="Your full name"
+                  placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+                />
 
                 <Text style={styles.label}>Phone</Text>
                 <TextInput
@@ -261,6 +268,7 @@ export default function AuthScreen() {
                   onChangeText={setPhone}
                   style={styles.input}
                   placeholder="017xxxxxxxx"
+                  placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
                   keyboardType={Platform.OS === "ios" ? "number-pad" : "phone-pad"}
                 />
 
@@ -297,7 +305,13 @@ export default function AuthScreen() {
                 </View>
 
                 <Text style={styles.label}>Area</Text>
-                <TextInput value={area} onChangeText={setArea} style={styles.input} placeholder="Mirpur, Dhaka" />
+                <TextInput
+                  value={area}
+                  onChangeText={setArea}
+                  style={styles.input}
+                  placeholder="Mirpur, Dhaka"
+                  placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
+                />
 
                 <Text style={styles.label}>Date of Birth</Text>
                 <TouchableOpacity style={styles.dateField} onPress={() => setPickerField("dateOfBirth")}>
@@ -342,6 +356,7 @@ export default function AuthScreen() {
               onChangeText={setEmail}
               style={styles.input}
               placeholder="you@example.com"
+              placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
               autoCapitalize="none"
               keyboardType="email-address"
             />
@@ -352,6 +367,7 @@ export default function AuthScreen() {
               onChangeText={setPassword}
               style={styles.input}
               placeholder="At least 6 characters"
+              placeholderTextColor={PLACEHOLDER_TEXT_COLOR}
               secureTextEntry
             />
 
