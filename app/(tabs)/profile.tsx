@@ -191,11 +191,13 @@ export default function ProfileScreen() {
             onPress={isEditing ? pickProfileImage : undefined}
             activeOpacity={isEditing ? 0.85 : 1}
           >
-            {profileImage ? (
-              <Image source={{ uri: profileImage }} style={styles.avatar} contentFit="cover" />
-            ) : (
-              <Text style={styles.avatarFallback}>{firstInitial(name || user?.name || "")}</Text>
-            )}
+            <View style={styles.avatarFrame}>
+              {profileImage ? (
+                <Image source={{ uri: profileImage }} style={styles.avatar} contentFit="cover" />
+              ) : (
+                <Text style={styles.avatarFallback}>{firstInitial(name || user?.name || "")}</Text>
+              )}
+            </View>
             {isEditing ? (
               <View style={styles.cameraBadge}>
                 <Ionicons name="camera-outline" size={14} color="#fff" />
@@ -499,18 +501,24 @@ const styles = StyleSheet.create({
   avatarWrap: {
     width: 104,
     height: 104,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    shadowColor: "#020617",
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  avatarFrame: {
+    width: "100%",
+    height: "100%",
     borderRadius: 999,
     backgroundColor: "#f8d7df",
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
     borderWidth: 3,
     borderColor: "rgba(255,255,255,0.2)",
-    shadowColor: "#020617",
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
   },
   avatar: {
     width: "100%",
@@ -523,16 +531,21 @@ const styles = StyleSheet.create({
   },
   cameraBadge: {
     position: "absolute",
-    right: 2,
-    bottom: 2,
-    width: 28,
-    height: 28,
+    right: -2,
+    bottom: 4,
+    width: 32,
+    height: 32,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: Colors.light.tint,
     borderWidth: 2,
-    borderColor: "#102a43",
+    borderColor: "#fff",
+    elevation: 3,
+    shadowColor: "#020617",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
   heroCopy: {
     gap: 4,
